@@ -1825,7 +1825,7 @@ fi
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
-kubectl rollout status deployment/ovn-central -n kube-system
+kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
 
@@ -2415,8 +2415,8 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n kube-system
-kubectl rollout status daemonset/kube-ovn-cni -n kube-system
+kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
 
@@ -2427,8 +2427,9 @@ for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name);
   done
 done
 
-kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
-kubectl rollout status deployment/coredns -n kube-system
+sleep 5
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 300s
+kubectl rollout status deployment/coredns -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
 
@@ -2953,7 +2954,6 @@ fi
 
 echo "[Step 6/6] Run network diagnose"
 kubectl ko diagnose all
-
 
 echo "-------------------------------"
 echo "

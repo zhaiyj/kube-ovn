@@ -127,6 +127,9 @@ const (
 	VethType         = "veth-pair"
 	OffloadType      = "offload-port"
 	InternalType     = "internal-port"
+	DpdkType         = "dpdk-port"
+
+	DefaultHostVhostuserBaseDir = "/run/openvswitch/vhost_sockets"
 
 	ChassisLoc     = "/etc/openvswitch/system-id.conf"
 	HostnameEnv    = "KUBE_NODE_NAME"

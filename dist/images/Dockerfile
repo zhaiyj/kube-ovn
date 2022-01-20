@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM kubeovn/kube-ovn-base:v1.9.0
+FROM etcdnecx/kube-ovn-base:ecx-base-dpdk
 
 COPY *.sh /kube-ovn/
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist

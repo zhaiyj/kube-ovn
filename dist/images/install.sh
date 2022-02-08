@@ -553,6 +553,10 @@ spec:
                   type: array
                   items:
                     type: string
+                vips:
+                  type: array
+                  items:
+                    type: string
                 gatewayType:
                   type: string
                 allowSubnets:

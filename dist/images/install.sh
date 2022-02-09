@@ -1204,7 +1204,7 @@ spec:
             exec:
               command:
                 - bash
-                - /kube-ovn/ovn-is-leader.sh
+                - /kube-ovn/ovn-healthcheck.sh
             periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:
@@ -1676,7 +1676,7 @@ spec:
             exec:
               command:
                 - bash
-                - /kube-ovn/ovn-is-leader.sh
+                - /kube-ovn/ovn-healthcheck.sh
             periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:

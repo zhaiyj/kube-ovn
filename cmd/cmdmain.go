@@ -1,14 +1,16 @@
 package main
 
 import (
-	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"os"
 	"strings"
+
+	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
@@ -23,6 +25,7 @@ const (
 	CmdSpeaker               = "kube-ovn-speaker"
 	CmdWebHook               = "kube-ovn-webhook"
 	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
+	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
 )
 
 func main() {
@@ -43,6 +46,8 @@ func main() {
 		webhook.CmdMain()
 	case CmdControllerHealthCheck:
 		controller_health_check.CmdMain()
+	case CmdOvnLeaderChecker:
+		ovn_leader_checker.CmdMain()
 	default:
 		klog.Fatalf("%s is an unknown command", cmd)
 	}

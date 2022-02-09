@@ -8,6 +8,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
@@ -15,12 +16,14 @@ import (
 )
 
 const (
-	CmdController = "kube-ovn-controller"
-	CmdDaemon     = "kube-ovn-daemon"
-	CmdMonitor    = "kube-ovn-monitor"
-	CmdPinger     = "kube-ovn-pinger"
-	CmdSpeaker    = "kube-ovn-speaker"
-	CmdWebHook    = "kube-ovn-webhook"
+	CmdController            = "kube-ovn-controller"
+	CmdDaemon                = "kube-ovn-daemon"
+	CmdMonitor               = "kube-ovn-monitor"
+	CmdPinger                = "kube-ovn-pinger"
+	CmdSpeaker               = "kube-ovn-speaker"
+	CmdWebHook               = "kube-ovn-webhook"
+	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
+	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
 )
 
 func main() {
@@ -39,6 +42,10 @@ func main() {
 		speaker.CmdMain()
 	case CmdWebHook:
 		webhook.CmdMain()
+	case CmdControllerHealthCheck:
+		controller_health_check.CmdMain()
+	case CmdOvnLeaderChecker:
+		ovn_leader_checker.CmdMain()
 	default:
 		klog.Fatalf("%s is an unknown command", cmd)
 	}

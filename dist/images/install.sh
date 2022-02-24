@@ -1615,11 +1615,8 @@ spec:
               cpu: 3
               memory: 3Gi
           volumeMounts:
-            - name: shared-dir
-              mountPath: /var/lib/kubelet/pods
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
-              mountPropagation: Bidirectional
             - mountPath: /var/run/ovn
               name: host-run-ovn
             - mountPath: /sys
@@ -1657,9 +1654,6 @@ spec:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
       volumes:
-        - name: shared-dir
-          hostPath:
-            path: /var/lib/kubelet/pods
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
@@ -2213,12 +2207,15 @@ spec:
           - name: RPMS
             value: $RPMS
         volumeMounts:
+          - name: shared-dir
+            mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
             name: systemid
           - mountPath: /etc/cni/net.d
             name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
+            mountPropagation: Bidirectional
           - mountPath: /run/ovn
             name: host-run-ovn
           - mountPath: /var/run/netns
@@ -2256,6 +2253,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: shared-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch

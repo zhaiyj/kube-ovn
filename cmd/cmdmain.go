@@ -8,7 +8,9 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/cmd/cni"
 	"github.com/kubeovn/kube-ovn/cmd/controller"
+	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -18,6 +20,7 @@ import (
 )
 
 const (
+	CmdCNI                   = "kube-ovn"
 	CmdController            = "kube-ovn-controller"
 	CmdDaemon                = "kube-ovn-daemon"
 	CmdMonitor               = "kube-ovn-monitor"
@@ -32,6 +35,8 @@ func main() {
 	cmds := strings.Split(os.Args[0], "/")
 	cmd := cmds[len(cmds)-1]
 	switch cmd {
+	case CmdCNI:
+		cni.CmdMain()
 	case CmdController:
 		controller.CmdMain()
 	case CmdDaemon:

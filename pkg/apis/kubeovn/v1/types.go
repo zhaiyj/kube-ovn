@@ -121,9 +121,26 @@ type SubnetSpec struct {
 	Vlan   string `json:"vlan,omitempty"`
 	HtbQos string `json:"htbqos,omitempty"`
 
-	LogicalGateway         bool `json:"logicalGateway"`
-	DisableGatewayCheck    bool `json:"disableGatewayCheck"`
-	DisableInterConnection bool `json:"disableInterConnection"`
+	Vips []string `json:"vips,omitempty"`
+
+	LogicalGateway         bool   `json:"logicalGateway"`
+	DisableGatewayCheck    bool   `json:"disableGatewayCheck"`
+	DisableInterConnection bool   `json:"disableInterConnection"`
+	EnableDHCP             bool   `json:"enableDHCP"`
+	DHCPv4Options          string `json:"dhcpV4Options"`
+	DHCPv6Options          string `json:"dhcpV6Options"`
+
+	EnableIPv6RA  bool   `json:"enableIPv6RA"`
+	IPv6RAConfigs string `json:"ipv6RAConfigs"`
+
+	Acls []Acl `json:"acls,omitempty"`
+}
+
+type Acl struct {
+	Direction string `json:"direction,omitempty"`
+	Priority  int    `json:"priority,omitempty"`
+	Match     string `json:"match,omitempty"`
+	Action    string `json:"action,omitempty"`
 }
 
 // ConditionType encodes information on the condition

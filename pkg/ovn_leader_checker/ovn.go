@@ -5,8 +5,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/spf13/pflag"
 	"io/ioutil"
+	"os"
+	exec "os/exec"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,11 +20,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"os"
-	exec "os/exec"
-	"strings"
-	"syscall"
-	"time"
 )
 
 const (
@@ -430,8 +431,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 			stealLock()
 		}
 	}
-	compactDataBase("/var/run/ovn/ovnnb_db.ctl")
-	compactDataBase("/var/run/ovn/ovnsb_db.ctl")
+	//compactDataBase("/var/run/ovn/ovnnb_db.ctl")
+	//compactDataBase("/var/run/ovn/ovnsb_db.ctl")
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {

@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
-
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/cmd/cni"

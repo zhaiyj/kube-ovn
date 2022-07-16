@@ -23,6 +23,7 @@ type Client struct {
 	NodeSwitch                    string
 	NodeSwitchCIDR                string
 	ExternalGatewayType           string
+	Version                       string
 }
 
 const (

@@ -1355,7 +1355,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
@@ -1847,7 +1847,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45

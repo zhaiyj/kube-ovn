@@ -273,6 +273,7 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 			"--", "lsp-set-addresses", port, strings.Join(addresses, " "))
 	}
 
+	klog.Infof("handle port %s/%s sg: portSecurity='%t', sgList='%v'", namespace, port, portSecurity, securityGroups)
 	if portSecurity {
 		if vips != "" {
 			addresses = append(addresses, strings.Split(vips, ",")...)
@@ -1617,6 +1618,7 @@ func (c Client) ListLspForNodePortgroup() (map[string]string, error) {
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
+	klog.Infof("set port to group, portGroup='%s', portList='%v'", portGroup, portNames)
 	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
 	if len(portNames) > 0 {
 		ovnArgs = []string{"pg-set-ports", portGroup}
@@ -1950,6 +1952,7 @@ func (c Client) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDirection)
 		}
 	}
 
+	klog.Infof("update sg acl, sgPortGroup='%s', direction='%s'", sgPortGroupName, direction)
 	// create port_group associated acl
 	if sg.Spec.AllowSameGroupTraffic {
 		v4AsName := GetSgV4AssociatedName(sg.Name)

@@ -210,11 +210,13 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 			klog.Errorf("update sg deny all policy failed. %v", err)
 			return err
 		}
+		return nil
 	}
 
 	orisg, err := c.sgsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			klog.Errorf("security group %s does not exist, %v", key, err)
 			return nil
 		}
 		return err

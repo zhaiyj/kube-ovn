@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
@@ -171,7 +172,13 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		if len(addrs) == 0 {
 			return fmt.Errorf("iface %s has no ip address", tunnelNic)
 		}
-		encapIP = strings.Split(addrs[0].String(), "/")[0]
+		for _, addr := range addrs {
+			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(addr.String()) {
+				continue
+			}
+			encapIP = strings.Split(addr.String(), "/")[0]
+			break
+		}
 	}
 
 	if config.MTU == 0 {

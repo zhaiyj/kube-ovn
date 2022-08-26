@@ -270,12 +270,13 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 	addresses = append(addresses, strings.Split(ip, ",")...)
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
-	if liveMigration {
-		// add external_id info as the filter of 'live Migration vm port'
-		ovnCommand = append(ovnCommand,
-			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
-			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
 
+	// add external_id info
+	ovnCommand = append(ovnCommand,
+		"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
+		"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+
+	if liveMigration {
 		ports, err := c.ListLogicalEntity("logical_switch_port",
 			fmt.Sprintf("external_ids:ls=%s", ls),
 			fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(ip, ",", "/")))

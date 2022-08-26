@@ -448,7 +448,7 @@ func (c Client) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter b
 	if needRouter {
 		ip := util.GetIpAddrWithMask(gateway, subnet)
 		mac := util.GenerateMac()
-		if err := c.createRouterPort(ls, lr, ip, mac); err != nil {
+		if err := c.CreateRouterPort(ls, lr, ip, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
 		}
@@ -772,7 +772,20 @@ func (c Client) RemoveRouterPort(ls, lr string) error {
 	return nil
 }
 
-func (c Client) createRouterPort(ls, lr, ip, mac string) error {
+func (c Client) IsRouterPortExist(ls, lr string) (bool, error) {
+	lrTols := fmt.Sprintf("%s-%s", lr, ls)
+	output, err := c.ovnNbCommand("find", "logical_router_port", fmt.Sprintf("name=%s", lrTols))
+	if err != nil {
+		klog.Errorf("failed to remove router port, %v", err)
+		return false, err
+	}
+	if output != "" {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (c Client) CreateRouterPort(ls, lr, ip, mac string) error {
 	klog.Infof("add %s to %s with ip=%s, mac=%s", ls, lr, ip, mac)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)

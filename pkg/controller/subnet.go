@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -649,6 +650,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	extRouter := subnet.Annotations[util.IPv6ExtensionVpcAnnotation]
+	if extRouter == "" || !subnet.Spec.EnableIPv6RA ||
+		subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 ||
+		subnet.Spec.Vpc != util.DefaultVpc ||
+		subnet.Spec.LogicalGateway == true {
+		if err = c.detachExtensionIPv6RA(subnet); err != nil {
+			return err
+		}
+	} else {
+		if err = c.attachExtensionIPv6RA(subnet); err != nil {
+			return err
+		}
+	}
+
 	if subnet.Status.DHCPv4OptionsUUID != dhcpOptionsUUIDs.DHCPv4OptionsUUID || subnet.Status.DHCPv6OptionsUUID != dhcpOptionsUUIDs.DHCPv6OptionsUUID {
 		subnet.Status.DHCPv4OptionsUUID = dhcpOptionsUUIDs.DHCPv4OptionsUUID
 		subnet.Status.DHCPv6OptionsUUID = dhcpOptionsUUIDs.DHCPv6OptionsUUID
@@ -704,6 +719,89 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
+	return nil
+}
+
+func (c *Controller) attachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
+	// check logical router status
+	extRouter := subnet.Annotations[util.IPv6ExtensionVpcAnnotation]
+	extVpc, err := c.vpcsLister.Get(extRouter)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !extVpc.Status.Standby {
+		err = fmt.Errorf("the extension vpc '%s' not standby yet", extVpc.Name)
+		klog.Error(err)
+		return err
+	}
+
+	// create router port
+	if exist, err := c.ovnClient.IsRouterPortExist(subnet.Name, extRouter); err != nil {
+		klog.Errorf("failed to check router port, %v", err)
+		return err
+	} else if !exist {
+		var gateway6 string
+		for _, gwIP := range strings.Split(subnet.Spec.Gateway, ",") {
+			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(gwIP) {
+				gateway6 = gwIP
+			}
+		}
+		mac := util.GenerateMac()
+		if err := c.ovnClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, mac); err != nil {
+			klog.Errorf("failed to attach extension router port to %s, %v", subnet.Name, err)
+			return err
+		}
+	}
+
+	// update RA config
+	if err := c.ovnClient.UpdateRouterPortIPv6RA(subnet.Name, extVpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
+		klog.Errorf("failed to update ipv6 ra configs for router port %s-%s, %v", extVpc.Status.Router, subnet.Name, err)
+		return err
+	}
+
+	// patch vpc labels
+	if extVpc.Labels[fmt.Sprintf("subnet-%s", subnet.Name)] == "true" {
+		return nil
+	}
+	extVpc.Labels = labels.Merge(extVpc.Labels, labels.Set{fmt.Sprintf("subnet-%s", subnet.Name): "true"})
+	raw, _ := json.Marshal(extVpc.Labels)
+	patchPayload := fmt.Sprintf(`[{ "op": "add", "path": "/metadata/labels", "value": %s }]`, raw)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), extVpc.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
+	if err != nil {
+		klog.Errorf("patch vpc %s failed %v", extVpc.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) detachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
+	selector := labels.SelectorFromSet(map[string]string{fmt.Sprintf("subnet-%s", subnet.Name): "true"})
+	extVpcs, err := c.vpcsLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to list vpc, %v", err)
+		return err
+	}
+
+	for _, vpc := range extVpcs {
+		if !vpc.Status.Standby {
+			continue
+		}
+		if err := c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
+			klog.Errorf("failed to detach extension router port from %s, %v", subnet.Name, err)
+			return err
+		}
+		delete(vpc.Labels, fmt.Sprintf("subnet-%s", subnet.Name))
+		raw, _ := json.Marshal(vpc.Labels)
+		patchPayload := fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, raw)
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
+		if err != nil {
+			klog.Errorf("patch vpc %s failed %v", vpc.Name, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -856,6 +954,11 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("failed to get vpc, %v", err)
 			return err
 		}
+	}
+
+	if err = c.detachExtensionIPv6RA(subnet); err != nil {
+		klog.Errorf("failed to detach extension vpc, %v", err)
+		return err
 	}
 
 	vlans, err := c.vlansLister.List(labels.Everything())

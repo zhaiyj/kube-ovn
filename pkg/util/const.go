@@ -71,6 +71,8 @@ const (
 
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 
+	IPv6ExtensionVpcAnnotation = "ovn.kubernetes.io/ipv6_ext_router"
+
 	SubnetNameLabel    = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel     = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel     = "ovn.kubernetes.io/external-gw"

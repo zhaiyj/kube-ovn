@@ -743,13 +743,19 @@ func (c *Controller) attachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("failed to check router port, %v", err)
 		return err
 	} else if !exist {
-		var gateway6 string
+		var gateway6, cidr6 string
 		for _, gwIP := range strings.Split(subnet.Spec.Gateway, ",") {
 			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(gwIP) {
 				gateway6 = gwIP
 			}
 		}
+		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(cidr) {
+				cidr6 = cidr
+			}
+		}
 		mac := util.GenerateMac()
+		gateway6 = util.GetIpAddrWithMask(gateway6, cidr6)
 		if err := c.ovnClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, mac); err != nil {
 			klog.Errorf("failed to attach extension router port to %s, %v", subnet.Name, err)
 			return err
@@ -774,6 +780,7 @@ func (c *Controller) attachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("patch vpc %s failed %v", extVpc.Name, err)
 		return err
 	}
+	klog.Infof("subnet %s attach extension ipv6 ra %s", subnet.Name, extRouter)
 	return nil
 }
 
@@ -801,6 +808,7 @@ func (c *Controller) detachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("patch vpc %s failed %v", vpc.Name, err)
 			return err
 		}
+		klog.Infof("subnet %s detach extension ipv6 ra %s", subnet.Name, vpc)
 	}
 	return nil
 }

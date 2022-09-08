@@ -902,12 +902,17 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c Client) AddPolicyRoute(router string, priority int32, match string, action string, nextHop string) error {
-	exist, err := c.IsPolicyRouteExist(router, priority, match)
+	exist, rule, err := c.IsPolicyRouteExist(router, priority, match)
 	if err != nil {
 		return err
 	}
 	if exist {
-		return nil
+		if rule.NextHopIP == nextHop {
+			return nil
+		}
+		if err = c.DeletePolicyRoute(router, priority, match); err != nil {
+			return err
+		}
 	}
 
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
@@ -923,7 +928,7 @@ func (c Client) AddPolicyRoute(router string, priority int32, match string, acti
 
 // DeletePolicyRoute delete a policy route rule in ovn
 func (c Client) DeletePolicyRoute(router string, priority int32, match string) error {
-	exist, err := c.IsPolicyRouteExist(router, priority, match)
+	exist, _, err := c.IsPolicyRouteExist(router, priority, match)
 	if err != nil {
 		return err
 	}
@@ -942,20 +947,20 @@ func (c Client) DeletePolicyRoute(router string, priority int32, match string) e
 	return err
 }
 
-func (c Client) IsPolicyRouteExist(router string, priority int32, match string) (bool, error) {
+func (c Client) IsPolicyRouteExist(router string, priority int32, match string) (bool, *PolicyRoute, error) {
 	existPolicyRoute, err := c.GetPolicyRouteList(router)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	for _, rule := range existPolicyRoute {
 		if rule.Priority != priority {
 			continue
 		}
 		if match == "" || rule.Match == match {
-			return true, nil
+			return true, rule, nil
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 func (c Client) DeletePolicyRouteByNexthop(router string, priority int32, nexthop string) error {

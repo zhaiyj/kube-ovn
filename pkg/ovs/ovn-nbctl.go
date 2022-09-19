@@ -967,7 +967,7 @@ func (c Client) DeletePolicyRouteByNexthop(router string, priority int32, nextho
 	args := []string{
 		"--no-heading", "--data=bare", "--columns=match", "find", "Logical_Router_Policy",
 		fmt.Sprintf("priority=%d", priority),
-		fmt.Sprintf(`nexthops{=}%s`, strings.ReplaceAll(nexthop, ":", `\:`)),
+		fmt.Sprintf(`nexthop{=}%s`, strings.ReplaceAll(nexthop, ":", `\:`)),
 	}
 	output, err := c.ovnNbCommand(args...)
 	if err != nil {
@@ -2096,35 +2096,6 @@ func (c *Client) PolicyRouteExists(priority int32, match string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
-}
-
-func (c *Client) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
-	var nexthops []string
-	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return nexthops, nil, err
-	}
-	if len(result) == 0 {
-		return nexthops, nil, nil
-	}
-	nexthops = append(nexthops, result[0]["nexthops"]...)
-
-	nameIpMap := make(map[string]string, len(result[0]["external_ids"]))
-	for _, l := range result[0]["external_ids"] {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), "=")
-		if len(parts) != 2 {
-			continue
-		}
-		name := strings.TrimSpace(parts[0])
-		ip := strings.TrimSpace(parts[1])
-		nameIpMap[name] = ip
-	}
-
-	return nexthops, nameIpMap, nil
 }
 
 func (c Client) SetPolicyRouteExternalIds(priority int32, match string, nameIpMaps map[string]string) error {

@@ -318,13 +318,6 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	// check if it's a sriov device
-	for _, container := range pod.Spec.Containers {
-		if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
-			podRequest.DeviceID = util.SRIOVResourceName
-		}
-	}
-
 	klog.Infof("delete port request %v", podRequest)
 	if pod.Annotations != nil && (podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName) {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]

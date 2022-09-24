@@ -460,13 +460,13 @@ func registerOvnMetrics() {
 
 	// ovn chassis metrics
 	prometheus.MustRegister(metricChassisInfo)
-	prometheus.MustRegister(metricLogicalSwitchInfo)
-	prometheus.MustRegister(metricLogicalSwitchExternalIDs)
-	prometheus.MustRegister(metricLogicalSwitchPortBinding)
-	prometheus.MustRegister(metricLogicalSwitchTunnelKey)
-	prometheus.MustRegister(metricLogicalSwitchPortsNum)
-	prometheus.MustRegister(metricLogicalSwitchPortInfo)
-	prometheus.MustRegister(metricLogicalSwitchPortTunnelKey)
+	// prometheus.MustRegister(metricLogicalSwitchInfo)
+	// prometheus.MustRegister(metricLogicalSwitchExternalIDs)
+	// prometheus.MustRegister(metricLogicalSwitchPortBinding)
+	// prometheus.MustRegister(metricLogicalSwitchTunnelKey)
+	// prometheus.MustRegister(metricLogicalSwitchPortsNum)
+	// prometheus.MustRegister(metricLogicalSwitchPortInfo)
+	// prometheus.MustRegister(metricLogicalSwitchPortTunnelKey)
 
 	// OVN Cluster basic info metrics
 	prometheus.MustRegister(metricClusterEnabled)

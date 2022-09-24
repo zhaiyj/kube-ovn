@@ -146,8 +146,8 @@ func (e *Exporter) ovnMetricsUpdate() {
 		e.exportOvnRequestErrorGauge()
 
 		e.exportOvnChassisGauge()
-		e.exportLogicalSwitchGauge()
-		e.exportLogicalSwitchPortGauge()
+		// e.exportLogicalSwitchGauge()
+		// e.exportLogicalSwitchPortGauge()
 
 		e.exportOvnClusterEnableGauge()
 		if isClusterEnabled {

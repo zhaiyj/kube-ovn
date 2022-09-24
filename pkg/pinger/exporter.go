@@ -108,8 +108,8 @@ func (e *Exporter) ovsMetricsUpdate() {
 	e.exportOvsDbFileSizeGauge()
 	e.exportOvsRequestErrorGauge()
 
-	e.exportOvsDpGauge()
-	e.exportOvsInterfaceGauge()
+	// e.exportOvsDpGauge()
+	// e.exportOvsInterfaceGauge()
 }
 
 func (e *Exporter) exportOvsStatusGauge() {

@@ -244,3 +244,14 @@ func (ipam *IPAM) IsIPAssignedToPod(ip, subnetName string) bool {
 		return subnet.isIPAssignedToPod(ip)
 	}
 }
+
+func (ipam *IPAM) GetPodByIP(ip string, subnetName string) (podList []string) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	if subnet, ok := ipam.Subnets[subnetName]; !ok {
+		return
+	} else {
+		return subnet.GetPodByIP(ip)
+	}
+}

@@ -1080,7 +1080,7 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
-var lastNoPodOvsPort map[string]bool
+var lastNoPodInternalOvsPort map[string]bool
 
 func (c *Controller) markAndCleanInternalPort() error {
 	klog.V(4).Infof("start to gc ovs internal ports")
@@ -1091,7 +1091,7 @@ func (c *Controller) markAndCleanInternalPort() error {
 
 	noPodOvsPort := map[string]bool{}
 	for _, portName := range residualPorts {
-		if !lastNoPodOvsPort[portName] {
+		if !lastNoPodInternalOvsPort[portName] {
 			noPodOvsPort[portName] = true
 		} else {
 			klog.Infof("gc ovs internal port %s", portName)
@@ -1102,9 +1102,56 @@ func (c *Controller) markAndCleanInternalPort() error {
 			}
 		}
 	}
-	lastNoPodOvsPort = noPodOvsPort
+	lastNoPodInternalOvsPort = noPodOvsPort
 
 	return nil
+}
+
+var lastNoPodOvsPort map[string]bool
+
+func (c *Controller) markAndCleanOvsPort() {
+	klog.V(4).Info("start to gc ovs ports")
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pod, %v", err)
+		return
+	}
+	residualPorts := ovs.GetResidualOvsPorts(pods)
+	if len(residualPorts) == 0 {
+		return
+	}
+	noPodOvsPort := map[string]bool{}
+	for _, portName := range residualPorts {
+		if !lastNoPodOvsPort[portName] {
+			noPodOvsPort[portName] = true
+		} else {
+			klog.Infof("delete ovs port %s", portName)
+			output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", portName)
+			if err != nil {
+				klog.Errorf("failed to delete ovs port %v, %q", err, output)
+				continue
+			}
+
+			hostLink, err := netlink.LinkByName(portName)
+			if err != nil {
+				if _, ok := err.(netlink.LinkNotFoundError); !ok {
+					klog.Errorf("find host link %s failed %v", portName, err)
+				}
+				continue
+			}
+
+			hostLinkType := hostLink.Type()
+			if hostLinkType == "veth" {
+				klog.Infof("delete host link %s", portName)
+				if err = netlink.LinkDel(hostLink); err != nil {
+					klog.Errorf("delete host link %s failed %v", hostLink, err)
+				}
+			}
+		}
+	}
+	lastNoPodOvsPort = noPodOvsPort
+
+	return
 }
 
 func (c *Controller) loopCheckSubnetQosPriority() {
@@ -1304,6 +1351,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs port error: %v", err)
 		}
 	}, 5*time.Minute, stopCh)
+	go wait.Until(c.markAndCleanOvsPort, 5*time.Minute, stopCh)
 	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")

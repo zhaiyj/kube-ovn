@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -337,6 +338,50 @@ func GetResidualInternalPorts() []string {
 		externaIds := strings.Split(intf, "\n")[1]
 		if !strings.Contains(externaIds, "iface-id") {
 			residualPorts = append(residualPorts, name)
+		}
+	}
+	return residualPorts
+}
+
+func GetResidualOvsPorts(pods []*v1.Pod) []string {
+	residualPorts := make([]string, 0)
+	// ofport=-1 handle in CleanLostInterface()
+	interfaceList, err := ovsFind("interface", "name,external_ids", "ofport!=-1")
+	if err != nil {
+		klog.Errorf("failed to list ovs interface %v", err)
+		return residualPorts
+	}
+
+	podStatusMap := make(map[string]struct{}, len(pods))
+	for _, pod := range pods {
+		podStatusMap[fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)] = struct{}{}
+	}
+
+	for _, intf := range interfaceList {
+		name := strings.Trim(strings.Split(intf, "\n")[0], "\"")
+		if !strings.Contains(name, "_h") && !strings.Contains(name, "_c") {
+			continue
+		}
+
+		externalIds := strings.Split(intf, "\n")[1]
+		if strings.Contains(externalIds, "iface-id") {
+			externalList := strings.Split(externalIds, ",")
+			var podName, podNamespace string
+			for _, item := range externalList {
+				if strings.Contains(item, "pod_name=") {
+					podName = strings.Split(item, "=")[1]
+				}
+				if strings.Contains(item, "pod_namespace=") {
+					podNamespace = strings.Split(item, "=")[1]
+				}
+			}
+			if podName == "" || podNamespace == "" {
+				continue
+			}
+
+			if _, exist := podStatusMap[fmt.Sprintf("%s/%s", podNamespace, podName)]; !exist {
+				residualPorts = append(residualPorts, name)
+			}
 		}
 	}
 	return residualPorts

@@ -654,7 +654,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if extRouter == "" || !subnet.Spec.EnableIPv6RA ||
 		subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 ||
 		subnet.Spec.Vpc != util.DefaultVpc ||
-		subnet.Spec.LogicalGateway == true {
+		subnet.Spec.LogicalGateway {
 		if err = c.detachExtensionIPv6RA(subnet); err != nil {
 			return err
 		}

@@ -1150,8 +1150,6 @@ func (c *Controller) markAndCleanOvsPort() {
 		}
 	}
 	lastNoPodOvsPort = noPodOvsPort
-
-	return
 }
 
 func (c *Controller) loopCheckSubnetQosPriority() {

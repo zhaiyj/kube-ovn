@@ -292,6 +292,10 @@ type ProviderNetworkStatus struct {
 
 	// +optional
 	// +patchStrategy=merge
+	NotReadyNodes []string `json:"notReadyNodes,omitempty" patchStrategy:"merge"`
+
+	// +optional
+	// +patchStrategy=merge
 	Vlans []string `json:"vlans,omitempty" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object

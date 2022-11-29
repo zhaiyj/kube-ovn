@@ -283,22 +283,20 @@ type ProviderNetworkSpec struct {
 
 type ProviderNetworkStatus struct {
 	// +optional
-	// +patchStrategy=merge
-	Ready bool `json:"ready" patchStrategy:"merge"`
+	Ready bool `json:"ready"`
 
 	// +optional
-	// +patchStrategy=merge
-	ReadyNodes []string `json:"readyNodes,omitempty" patchStrategy:"merge"`
+	ReadyNodes []string `json:"readyNodes,omitempty"`
 
 	// +optional
-	// +patchStrategy=merge
-	Vlans []string `json:"vlans,omitempty" patchStrategy:"merge"`
+	NotReadyNodes []string `json:"notReadyNodes,omitempty"`
+
+	// +optional
+	Vlans []string `json:"vlans,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
-	// +patchMergeKey=node
-	// +patchStrategy=merge
-	Conditions []ProviderNetworkCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"node"`
+	Conditions []ProviderNetworkCondition `json:"conditions,omitempty"`
 }
 
 // Condition describes the state of an object at a certain point.

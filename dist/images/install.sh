@@ -704,6 +704,8 @@ spec:
     - name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
@@ -750,6 +752,10 @@ spec:
                 ready:
                   type: boolean
                 readyNodes:
+                  type: array
+                  items:
+                    type: string
+                notReadyNodes:
                   type: array
                   items:
                     type: string

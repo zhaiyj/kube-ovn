@@ -71,6 +71,9 @@ type Controller struct {
 	ipsetLock sync.Mutex
 
 	protocol string
+
+	localPodName   string
+	localNamespace string
 }
 
 // NewController init a daemon controller
@@ -265,25 +268,13 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 	}
 
 	if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}
 	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 }
 
 func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	if pn.Status.EnsureNodeStandardConditions(node.Name) {
-		bytes, err := pn.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-			return err
-		}
-	}
-
 	nic := pn.Spec.DefaultInterface
 	for _, item := range pn.Spec.CustomInterfaces {
 		if util.ContainsString(item.Nodes, node.Name) {
@@ -308,50 +299,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 				}
 			}
 		}
-
-		if util.ContainsString(pn.Status.ReadyNodes, node.Name) {
-			pn.Status.ReadyNodes = util.RemoveString(pn.Status.ReadyNodes, node.Name)
-			if len(pn.Status.ReadyNodes) == 0 {
-				bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
-				_, err1 := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-				if err1 != nil {
-					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
-				}
-			} else {
-				bytes, err1 := pn.Status.Bytes()
-				if err1 != nil {
-					klog.Error(err1)
-				}
-				_, err1 = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-				if err1 != nil {
-					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
-				}
-			}
-		}
-
-		pn.Status.SetNodeNotReady(node.Name, "InitOVSBridgeFailed", err.Error())
-		bytes, err1 := pn.Status.Bytes()
-		if err1 != nil {
-			klog.Error(err1)
-		} else {
-			_, err1 = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err1 != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
-			}
-		}
-
-		return err
-	}
-
-	pn.Status.SetNodeReady(node.Name, "InitOVSBridgeSucceeded", "")
-	bytes, err := pn.Status.Bytes()
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+		c.recordProviderNetworkErr(pn.Name, err.Error())
 		return err
 	}
 
@@ -373,71 +321,57 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		klog.Errorf("failed to patch node %s: %v", node.Name, err)
 		return err
 	}
-
-	if !util.ContainsString(pn.Status.ReadyNodes, node.Name) {
-		pn.Status.ReadyNodes = append(pn.Status.ReadyNodes, node.Name)
-		bytes, err := pn.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-			return err
-		}
-	}
-
+	c.recordProviderNetworkErr(pn.Name, "")
 	return nil
 }
 
-func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
-	if util.ContainsString(pn.Status.ReadyNodes, node) {
-		pn.Status.ReadyNodes = util.RemoveString(pn.Status.ReadyNodes, node)
-		if len(pn.Status.ReadyNodes) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := pn.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
+func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) {
+	var currentPod *v1.Pod
+	var err error
+	if c.localPodName == "" {
+		pods, err := c.config.KubeClient.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
+			LabelSelector: "app=kube-ovn-cni",
+			FieldSelector: fmt.Sprintf("spec.nodeName=%s", c.config.NodeName),
+		})
+		if err != nil {
+			klog.Errorf("failed to list pod: %v", err)
+			return
+		}
+		for _, pod := range pods.Items {
+			if pod.Spec.NodeName == c.config.NodeName && pod.Status.Phase == v1.PodRunning {
+				c.localPodName = pod.Name
+				c.localNamespace = pod.Namespace
+				currentPod = &pod
+				break
 			}
 		}
-	}
-	if pn.Status.RemoveNodeConditions(node) {
-		if len(pn.Status.Conditions) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := pn.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
+	} else {
+		if currentPod, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Get(context.Background(), c.localPodName, metav1.GetOptions{}); err != nil {
+			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)
+			return
 		}
 	}
 
-	return nil
+	newPod := currentPod.DeepCopy()
+	if newPod.Annotations == nil {
+		newPod.Annotations = make(map[string]string)
+	}
+	if newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
+		if errMsg == "" {
+			delete(newPod.Annotations, fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork))
+		} else {
+			newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
+		}
+		patch, err := util.GenerateStrategicMergePatchPayload(currentPod, newPod)
+		if err != nil {
+			klog.Errorf("failed to gen patch payload pod %s: %v", c.localPodName, err)
+			return
+		}
+		if _, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Patch(context.Background(), c.localPodName, types.StrategicMergePatchType, patch, metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
+			return
+		}
+	}
 }
 
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
@@ -448,28 +382,6 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 	}
 
 	var err error
-	if pn.Status.RemoveNodeConditions(node.Name) {
-		if len(pn.Status.Conditions) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := pn.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		}
-	}
-
 	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
 	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
 	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
@@ -482,9 +394,6 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
-	if err = c.updateProviderNetworkStatusForNodeDeletion(pn, node.Name); err != nil {
-		return err
-	}
 	if err = ovsCleanProviderNetwork(pn.Name); err != nil {
 		return err
 	}
@@ -1362,4 +1271,16 @@ func recompute() {
 	if err != nil {
 		klog.Errorf("failed to recompute ovn-controller %q", output)
 	}
+}
+
+func generatePatchPayload(annotations map[string]string, op string) []byte {
+	patchPayloadTemplate :=
+		`[{
+        "op": "%s",
+        "path": "/metadata/annotations",
+        "value": %s
+          }]`
+
+	raw, _ := json.Marshal(annotations)
+	return []byte(fmt.Sprintf(patchPayloadTemplate, op, raw))
 }

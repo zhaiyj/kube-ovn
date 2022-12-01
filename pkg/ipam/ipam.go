@@ -67,11 +67,11 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 			}
 			ips = append(ips, ipAddr)
 		}
-		ips, err = checkAndAppendIpsForDual(ips, podName, nicName, subnet)
-		if err != nil {
-			klog.Errorf("failed to append allocate ip %v mac %s for %s", ips, mac, podName)
-			return "", "", "", err
-		}
+		// ips, err = checkAndAppendIpsForDual(ips, podName, nicName, subnet)
+		// if err != nil {
+		// 	klog.Errorf("failed to append allocate ip %v mac %s for %s", ips, mac, podName)
+		// 	return "", "", "", err
+		// }
 
 		switch subnet.Protocol {
 		case kubeovnv1.ProtocolIPv4:
@@ -81,6 +81,10 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 			klog.Infof("allocate v6 %s mac %s for %s", ip, mac, podName)
 			return "", ip, mac, err
 		case kubeovnv1.ProtocolDual:
+			if len(ips) == 1 {
+				klog.Infof("allocate v6 %s mac %s for %s", ip, mac, podName)
+				return "", ip, mac, err
+			}
 			klog.Infof("allocate v4 %s v6 %s mac %s for %s", string(ips[0]), string(ips[1]), mac, podName)
 			return string(ips[0]), string(ips[1]), mac, err
 		}

@@ -325,7 +325,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	return nil
 }
 
-func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) error {
+func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
@@ -335,7 +335,7 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg str
 		})
 		if err != nil {
 			klog.Errorf("failed to list pod: %v", err)
-			return err
+			return
 		}
 		for _, pod := range pods.Items {
 			if pod.Spec.NodeName == c.config.NodeName && pod.Status.Phase == v1.PodRunning {
@@ -348,7 +348,7 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg str
 	} else {
 		if currentPod, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Get(context.Background(), c.localPodName, metav1.GetOptions{}); err != nil {
 			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)
-			return err
+			return
 		}
 	}
 
@@ -363,9 +363,8 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg str
 	}
 	if _, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Patch(context.Background(), c.localPodName, types.JSONPatchType, generatePatchPayload(currentPod.Annotations, "replace"), metav1.PatchOptions{}); err != nil {
 		klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
-		return err
+		return
 	}
-	return nil
 }
 
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {

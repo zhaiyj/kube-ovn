@@ -434,6 +434,31 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
+func checkoutCidrByIP(ipStr, cidr string) string {
+	cidrs := strings.Split(cidr, ",")
+	if len(cidr) == 1 {
+		return cidr
+	}
+	var v6CIDR, v4CIDR string
+	for _, c := range cidrs {
+		if strings.Contains(c, ":") {
+			v6CIDR = c
+		} else {
+			v4CIDR = c
+		}
+	}
+
+	switch util.CheckProtocol(ipStr) {
+	case kubeovnv1.ProtocolIPv4:
+		return v4CIDR
+	case kubeovnv1.ProtocolIPv6:
+		return v6CIDR
+	case kubeovnv1.ProtocolDual:
+		return cidr
+	}
+	return cidr
+}
+
 func (c *Controller) handleAddPod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
@@ -484,8 +509,8 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = mac
-		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.CIDRBlock
-		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Gateway
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(ipStr, subnet.Spec.CIDRBlock)
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(ipStr, subnet.Spec.Gateway)
 		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = subnet.Name
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 		if pod.Annotations[util.PodNicAnnotation] == "" {

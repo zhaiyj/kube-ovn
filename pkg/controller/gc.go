@@ -627,6 +627,27 @@ func (c *Controller) gcChassis() error {
 	return nil
 }
 
+// Just for ECX
+func (c *Controller) gcIP() {
+	ips, err := c.ipsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list IP CR")
+	}
+	for _, ip := range ips {
+		if ip.Spec.Namespace == "" {
+			continue
+		}
+		_, err = c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
+		if err != nil && k8serrors.IsNotFound(err) {
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
+				klog.Errorf("failed to delete IP CR %s: %v", ip.Name, err)
+			} else {
+				c.ipam.ReleaseAddressByPod(fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName))
+			}
+		}
+	}
+}
+
 func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, error) {
 	ls := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
 	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), ls, metav1.GetOptions{})

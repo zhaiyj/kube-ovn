@@ -327,6 +327,16 @@ func (c *Controller) InitIPAM() error {
 	for _, ip := range ips {
 		var ipamKey string
 		if ip.Spec.Namespace != "" {
+			// If there is no pod, clear ip resources. Just for ECX
+			_, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
+			if err != nil && k8serrors.IsNotFound(err) {
+				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
+					klog.Errorf("failed to delete IP CR %s: %v", ip.Name, err)
+				} else {
+					c.ipam.ReleaseAddressByPod(fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName))
+				}
+				continue
+			}
 			ipamKey = fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
 		} else {
 			ipamKey = fmt.Sprintf("node-%s", ip.Spec.PodName)

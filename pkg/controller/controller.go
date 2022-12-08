@@ -602,7 +602,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
 
-	go wait.Until(c.reSyncProviderNetworkStatus, 15*time.Second, stopCh)
+	go wait.Until(c.resyncProviderNetworkStatus, 15*time.Second, stopCh)
 
 	// Just for ECX
 	go wait.Until(c.gcIP, 5*time.Minute, stopCh)

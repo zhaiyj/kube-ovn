@@ -51,6 +51,18 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName, subnetName string, skippedA
 	return string(v4IP), string(v6IP), mac, err
 }
 
+func (ipam *IPAM) ReleaseIPAddressByPodNameAndNicName(podName, nicName, subnetName string) (err error) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return ErrNoAvailable
+	}
+
+	subnet.releaseAddr(podName, nicName)
+	return nil
+}
+
 func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string, checkConflict bool) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()

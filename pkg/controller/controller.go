@@ -35,18 +35,19 @@ const controllerAgentName = "kube-ovn-controller"
 type Controller struct {
 	config *Configuration
 	vpcs   *sync.Map
-	//subnetVpcMap *sync.Map
+	// subnetVpcMap *sync.Map
 	podSubnetMap *sync.Map
 	ovnClient    *ovs.Client
 	ipam         *ovnipam.IPAM
 
-	podsLister             v1.PodLister
-	podsSynced             cache.InformerSynced
-	addPodQueue            workqueue.RateLimitingInterface
-	deletePodQueue         workqueue.RateLimitingInterface
-	updatePodQueue         workqueue.RateLimitingInterface
-	updatePodSecurityQueue workqueue.RateLimitingInterface
-	podKeyMutex            *keymutex.KeyMutex
+	podsLister              v1.PodLister
+	podsSynced              cache.InformerSynced
+	addPodQueue             workqueue.RateLimitingInterface
+	deletePodQueue          workqueue.RateLimitingInterface
+	updatePodQueue          workqueue.RateLimitingInterface
+	updatePodSecurityQueue  workqueue.RateLimitingInterface
+	updatePodIPAddressQueue workqueue.RateLimitingInterface
+	podKeyMutex             *keymutex.KeyMutex
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
@@ -209,13 +210,14 @@ func NewController(config *Configuration) *Controller {
 		providerNetworksLister: providerNetworkInformer.Lister(),
 		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
-		podsLister:             podInformer.Lister(),
-		podsSynced:             podInformer.Informer().HasSynced,
-		addPodQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
-		deletePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
-		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
-		podKeyMutex:            keymutex.New(97),
+		podsLister:              podInformer.Lister(),
+		podsSynced:              podInformer.Informer().HasSynced,
+		addPodQueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		deletePodQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		updatePodSecurityQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
+		updatePodIPAddressQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodIPAddress"),
+		podKeyMutex:             keymutex.New(97),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
@@ -528,7 +530,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
-	//go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
+	// go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
 
 	if c.config.EnableLb {
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
@@ -540,6 +542,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdatePodIPAddressWorker, time.Second, stopCh)
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)

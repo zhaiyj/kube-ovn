@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -74,9 +75,8 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	if p.Spec.HostNetwork {
 		return
 	}
-
+	isStateful, statefulSetName := isStatefulSetPod(p)
 	if !isPodAlive(p) {
-		isStateful, statefulSetName := isStatefulSetPod(p)
 		if isStateful {
 			if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
@@ -110,6 +110,8 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		}
 		return
 	}
+
+	c.checkAndAddIPAddressChange(key, p, isStateful, podNets)
 
 	if p.Annotations != nil && p.Annotations[util.AllocatedAnnotation] == "true" {
 		return
@@ -243,6 +245,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
+	// handle ip address change
+	c.checkAndAddIPAddressChange(key, newPod, isStateful, podNets)
+
 	// security policy changed
 	for _, podNet := range podNets {
 		oldSecurity := oldPod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)]
@@ -254,6 +259,30 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		if oldSecurity != newSecurity || oldSg != newSg || oldVips != newVips {
 			c.updatePodSecurityQueue.Add(key)
 			break
+		}
+	}
+}
+
+func (c *Controller) checkAndAddIPAddressChange(key string, pod *v1.Pod, isStateful bool, podNets []*kubeovnNet) {
+	if pod.Annotations == nil {
+		return
+	}
+	if !isStateful {
+		for _, podNet := range podNets {
+			// skip provider ovn
+			if podNet.ProviderName == util.OvnProvider {
+				continue
+			}
+			// 	skip if migrate ip address is empty
+			migrateIPAddress := pod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)]
+			if migrateIPAddress == "" {
+				continue
+			}
+			nowIPAddress := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+			if migrateIPAddress != nowIPAddress {
+				c.updatePodIPAddressQueue.Add(key)
+				break
+			}
 		}
 	}
 }
@@ -275,6 +304,11 @@ func (c *Controller) runUpdatePodWorker() {
 
 func (c *Controller) runUpdatePodSecurityWorker() {
 	for c.processNextUpdatePodSecurityWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdatePodIPAddressWorker() {
+	for c.processNextUpdatePodIPAddressWorkItem() {
 	}
 }
 
@@ -376,6 +410,37 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		return true
 	}
 
+	return true
+}
+
+func (c *Controller) processNextUpdatePodIPAddressWorkItem() bool {
+	obj, shutdown := c.updatePodIPAddressQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.updatePodIPAddressQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updatePodIPAddressQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdatePodIPAddress(key); err != nil {
+			c.updatePodIPAddressQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updatePodIPAddressQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
 	return true
 }
 
@@ -714,6 +779,186 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		for _, podNet := range podNets {
 			c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 		}
+	}
+	return nil
+}
+
+func (c *Controller) handleUpdatePodIPAddress(key string) error {
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	klog.Infof("update pod %s/%s ip address", namespace, name)
+
+	if pod.Annotations[util.AllocatedAnnotation] == "" {
+		return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+	}
+
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to pod nets %v", err)
+		return err
+	}
+
+	annotationChange := false
+	// update ip address
+	for _, podNet := range podNets {
+
+		if podNet.ProviderName == util.OvnProvider {
+			continue
+		}
+
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
+
+		// 	skip if migrate ip address is empty
+		migrateIPAddress := pod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)]
+		if migrateIPAddress == "" {
+			continue
+		}
+		nowIPAddress := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		if nowIPAddress == migrateIPAddress {
+			continue
+		}
+		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+
+		// validate migrate ip address
+		var v4, v6 net.IP
+		var v4Str, v6Str string
+		ipArr := strings.Split(migrateIPAddress, ",")
+		for _, tmpIP := range ipArr {
+			parseIP := net.ParseIP(tmpIP)
+			if parseIP == nil {
+				return fmt.Errorf("unexpected ip address %s", tmpIP)
+			}
+			if strings.Contains(tmpIP, ":") {
+				if v6 != nil {
+					return fmt.Errorf("unexpected migrate ip address %s", migrateIPAddress)
+				}
+				v6 = parseIP
+				v6Str = tmpIP
+			} else {
+				if v4 != nil {
+					return fmt.Errorf("unexpected migrate ip address %s", migrateIPAddress)
+				}
+				v4 = parseIP
+				v4Str = tmpIP
+			}
+		}
+		if v4 != nil {
+			if podNet.Subnet.Spec.Protocol != kubeovnv1.ProtocolIPv4 && podNet.Subnet.Spec.Protocol != kubeovnv1.ProtocolDual {
+				return errors.New("migrate ip address and subnet protocol do not match")
+			}
+			tmp := strings.Split(podNet.Subnet.Spec.CIDRBlock, ",")
+			if len(tmp) == 0 {
+				return fmt.Errorf("unexpected subnet %s cidr block, %s", podNet.Subnet.Name, podNet.Subnet.Spec.CIDRBlock)
+			}
+			_, subnetCidr, err := net.ParseCIDR(tmp[0])
+			if err != nil {
+				return fmt.Errorf("failed to parse cidr, %s", tmp[0])
+			}
+			if !subnetCidr.Contains(v4) {
+				return errors.New("AddressOutOfRange")
+			}
+
+		}
+
+		if v6 != nil {
+			if podNet.Subnet.Spec.Protocol != kubeovnv1.ProtocolIPv6 && podNet.Subnet.Spec.Protocol != kubeovnv1.ProtocolDual {
+				return errors.New("migrate ip address and subnet protocol do not match")
+			}
+			tmp := strings.Split(podNet.Subnet.Spec.CIDRBlock, ",")
+			if len(tmp) == 0 {
+				return fmt.Errorf("unexpected subnet %s cidr block, %s", podNet.Subnet.Name, podNet.Subnet.Spec.CIDRBlock)
+			}
+			_, subnetCidr, err := net.ParseCIDR(tmp[len(tmp)-1])
+			if err != nil {
+				return fmt.Errorf("failed to parse cidr, %s", tmp[len(tmp)-1])
+			}
+			if !subnetCidr.Contains(v6) {
+				return errors.New("AddressOutOfRange")
+			}
+		}
+		nicName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+		klog.Infof("migrate pod nic ip addr from %s to %s", nowIPAddress, migrateIPAddress)
+		// change pod annotation
+		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = migrateIPAddress
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(migrateIPAddress, podNet.Subnet.Spec.CIDRBlock)
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(migrateIPAddress, podNet.Subnet.Spec.Gateway)
+		annotationChange = true
+
+		// ipam release old ip
+		if err = c.ipam.ReleaseIPAddressByPodNameAndNicName(pod.Name, nicName, podNet.Subnet.Name); err != nil {
+			return err
+		}
+		// ipam get ip
+		if _, _, _, err = c.ipam.GetStaticAddress(key, nicName, migrateIPAddress, mac, podNet.Subnet.Name, true); err != nil {
+			return err
+		}
+
+		// sync logical port address
+		if err = c.ovnClient.SetPortAddress(nicName, mac, migrateIPAddress); err != nil {
+			klog.Errorf("set port addresses failed, %v", err)
+			return err
+		}
+
+		// sync port security
+		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
+			portSecurity := true
+			ipStr := migrateIPAddress
+			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+			if err = c.ovnClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, nicName, mac, ipStr, vips); err != nil {
+				klog.Errorf("setPortSecurity failed. %v", err)
+				return err
+			}
+		}
+		// update ip crd
+		if err = c.updateIPCRD(context.Background(), nicName, migrateIPAddress, v4Str, v6Str); err != nil {
+			return err
+		}
+	}
+	if annotationChange {
+		op := "replace"
+		if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
+				// Then we need to recycle the resource again.
+				c.deletePodQueue.AddRateLimited(key)
+				return nil
+			}
+			klog.Errorf("patch pod %s/%s failed: %v", name, namespace, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateIPCRD(ctx context.Context, ipCrName string, ipStr, ipv4, ipv6 string) (err error) {
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(ctx, ipCrName, metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+	ipCr.Spec.IPAddress = ipStr
+	ipCr.Spec.V4IPAddress = ipv4
+	ipCr.Spec.V6IPAddress = ipv6
+
+	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
+		errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ipStr, err)
+		klog.Error(errMsg)
+		return errMsg
 	}
 	return nil
 }

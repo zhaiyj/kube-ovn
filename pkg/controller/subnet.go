@@ -98,7 +98,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
-		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) {
+		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
+		oldSubnet.Annotations[util.IPv6ExtensionVpcPrefixAnnotation] != newSubnet.Annotations[util.IPv6ExtensionVpcPrefixAnnotation] {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -738,26 +739,44 @@ func (c *Controller) attachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	// create router port
+	var gateway6, prefix string
+	for _, gwIP := range strings.Split(subnet.Spec.Gateway, ",") {
+		if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(gwIP) {
+			gateway6 = gwIP
+		}
+	}
+	prefix, ok := subnet.Annotations[util.IPv6ExtensionVpcPrefixAnnotation]
+	if ok {
+		if util.CheckCidrs(prefix) != nil {
+			klog.Errorf("not valid CIDR '%s', %v", prefix, err)
+			return err
+		}
+		if util.CheckProtocol(prefix) != kubeovnv1.ProtocolIPv6 {
+			errMsg := fmt.Errorf("'%s' not an IPv6 prefix", prefix)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(cidr) {
+				prefix = cidr
+			}
+		}
+	}
+	gateway6 = util.GetIpAddrWithMask(gateway6, prefix)
+
+	// config router port
 	if exist, err := c.ovnClient.IsRouterPortExist(subnet.Name, extRouter); err != nil {
 		klog.Errorf("failed to check router port, %v", err)
 		return err
 	} else if !exist {
-		var gateway6, cidr6 string
-		for _, gwIP := range strings.Split(subnet.Spec.Gateway, ",") {
-			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(gwIP) {
-				gateway6 = gwIP
-			}
-		}
-		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(cidr) {
-				cidr6 = cidr
-			}
-		}
-		mac := util.GenerateMac()
-		gateway6 = util.GetIpAddrWithMask(gateway6, cidr6)
-		if err := c.ovnClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, mac); err != nil {
+		if err := c.ovnClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, util.GenerateMac()); err != nil {
 			klog.Errorf("failed to attach extension router port to %s, %v", subnet.Name, err)
+			return err
+		}
+	} else {
+		if err := c.ovnClient.SetRouterPortNetworks(subnet.Name, extVpc.Name, gateway6); err != nil {
+			klog.Errorf("failed to set networks '%s' to extension router port, %v", gateway6, err)
 			return err
 		}
 	}

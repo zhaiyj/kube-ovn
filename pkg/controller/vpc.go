@@ -638,7 +638,6 @@ func (c *Controller) createVpcRouter(lr string) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("exists routers %v", lrs)
 	for _, r := range lrs {
 		if lr == r {
 			return nil

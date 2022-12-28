@@ -436,6 +436,15 @@ func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string,
 	return nil
 }
 
+func (c Client) SetRouterPortNetworks(ls, lr, gateways string) error {
+	networks := strings.ReplaceAll(strings.Join(strings.Split(gateways, ","), " "), ":", "\\:")
+	_, err := c.ovnNbCommand("set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks))
+	if err != nil {
+		klog.Errorf("set networks '%s' to router port failed: %v", networks, err)
+	}
+	return err
+}
+
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
 func (c Client) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter bool) error {
 	_, err := c.ovnNbCommand(MayExist, "ls-add", ls, "--",
@@ -841,8 +850,8 @@ func (c Client) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortI
 		}
 	}
 
-	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
-		fmt.Sprintf("networks=%s", strings.ReplaceAll(localRouterPortIP, ",", " ")))
+	networks := strings.ReplaceAll(strings.Join(strings.Split(localRouterPortIP, ","), " "), ":", "\\:")
+	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort, fmt.Sprintf("networks=%s", networks))
 
 	if err != nil {
 		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)

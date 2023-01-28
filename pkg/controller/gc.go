@@ -31,6 +31,7 @@ func (c *Controller) gc() error {
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
+		c.gcDNS,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -662,4 +663,36 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *Controller) gcDNS() error {
+	klog.Infof("start to gc dns")
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc %v", err)
+		return err
+	}
+	vpcDnsRecordsMap := make(map[string]string)
+	for _, vpc := range vpcs {
+		if vpc.Annotations[util.DnsEnableAnnotation] == "true" {
+			if dnsUuidStr := vpc.Annotations[util.DnsUuidAnnotation]; dnsUuidStr != "" {
+				vpcDnsRecordsMap[dnsUuidStr] = ""
+			}
+		}
+	}
+	dnsList, err := c.ovnClient.ListDns()
+	if err != nil {
+		klog.Errorf("failed to list dns %v", err)
+		return err
+	}
+	for _, dnsUuid := range dnsList {
+		// if no exist, destroy dns
+		if _, ok := vpcDnsRecordsMap[dnsUuid]; !ok {
+			if err := c.ovnClient.DestroyDns(dnsUuid); err != nil {
+				klog.Errorf("failed to destroy dns %v", err)
+				return err
+			}
+		}
+	}
+	return nil
 }

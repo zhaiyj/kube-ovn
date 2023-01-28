@@ -719,6 +719,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	// vpc dns
+	if vpc.Annotations[util.DnsEnableAnnotation] == "true" {
+		if dnsUuidStr := vpc.Annotations[util.DnsUuidAnnotation]; dnsUuidStr != "" {
+			if err := c.ovnClient.SetDnsRecordsToLogicalSwitch(subnet.Name, dnsUuidStr); err != nil {
+				klog.Errorf("failed to set dns_records %v to logical_switch %v, %v", dnsUuidStr, subnet.Name, err)
+				return err
+			}
+		}
+	}
+
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	return nil
 }

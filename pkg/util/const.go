@@ -30,6 +30,8 @@ const (
 	LogicalRouterAnnotation  = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation            = "ovn.kubernetes.io/vpc"
 	VpcEnableOvnLbAnnotation = "ovn.kubernetes.io/enable_lb"
+	DnsEnableAnnotation      = "ovn.kubernetes.io/enable_dns"
+	DnsUuidAnnotation        = "ovn.kubernetes.io/dns_uuid"
 
 	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
 	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"

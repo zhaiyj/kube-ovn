@@ -466,6 +466,110 @@ func (c Client) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter b
 	return nil
 }
 
+func (c Client) CreateDns(vpcName string) (string, error) {
+	output, err := c.ovnNbCommand("create", "DNS", fmt.Sprintf("external_ids:vpc=%s", vpcName),
+		fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	if err != nil {
+		return output, fmt.Errorf("failed to create dns, %v", err)
+	}
+	return output, nil
+}
+
+func (c Client) FindDns(vpcName string) (string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+		"find", "DNS", fmt.Sprintf("external_ids:vpc=%s", vpcName))
+	count := len(strings.FieldsFunc(output, func(c rune) bool { return c == '\n' }))
+	if count > 1 {
+		klog.Errorf("%s has %d dns entries", vpcName, count)
+		return "", fmt.Errorf("%s has %d dnsss entries", vpcName, count)
+	}
+	return output, err
+}
+
+func (c Client) GetDnsRecords(uuid string) (string, error) {
+	output, err := c.ovnNbCommand("get", "DNS", uuid, "records")
+	if err != nil {
+		return "", fmt.Errorf("failed to set dns records, %v", err)
+	}
+	return output, nil
+}
+
+func (c Client) SetDnsRecords(uuid string, records map[string]string) error {
+	if len(records) == 0 {
+		return nil
+	}
+	var recordSet []string
+	for domain, addrs := range records {
+		if !strings.Contains(addrs, ":") {
+			addrs = fmt.Sprintf("%s ::", addrs)
+		}
+		//recordSet = append(recordSet, fmt.Sprintf("records:%s=\"%s\"", domain, strings.ReplaceAll(addrs, ":", "\\:")))
+		recordSet = append(recordSet, fmt.Sprintf("records:%s=\"%s\"", domain, addrs))
+	}
+	_, err := c.ovnNbCommand(append([]string{"set", "DNS", uuid}, recordSet...)...)
+	if err != nil {
+		return fmt.Errorf("failed to set dns records, %v", err)
+	}
+	return nil
+}
+
+func (c Client) RemoveDnsRecords(uuid string, domains ...string) error {
+	cmd := append([]string{"remove", "DNS", uuid, "records"}, domains...)
+	_, err := c.ovnNbCommand(cmd...)
+	if err != nil {
+		return fmt.Errorf("failed to remove dns records, %v", err)
+	}
+	return nil
+}
+
+func (c Client) DestroyDns(uuid string) error {
+	if _, err := c.ovnNbCommand(IfExists, "destroy", "DNS", uuid); err != nil {
+		return fmt.Errorf("failed to destroy dns records, %v", err)
+	}
+	return nil
+}
+
+func (c Client) ListDns() ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+		"find", "DNS", fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list dns, %v", err)
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if len(l) > 0 {
+			result = append(result, l)
+		}
+	}
+	return result, nil
+}
+
+func (c Client) SetDnsRecordsToLogicalSwitch(logicalSwitch, dnsUuid string) error {
+	if _, err := c.ovnNbCommand("set", "Logical_Switch", logicalSwitch, fmt.Sprintf("dns_records=%s", dnsUuid)); err != nil {
+		return fmt.Errorf("failed to set dns to logical_switch, %v", err)
+	}
+	return nil
+}
+
+func (c Client) ClearDnsRecordsFromLogicalSwitch(logicalSwitch string) error {
+	if _, err := c.ovnNbCommand("clear", "Logical_Switch", logicalSwitch, "dns_records"); err != nil {
+		return fmt.Errorf("failed to clear dns to logical_switch, %v", err)
+	}
+	return nil
+}
+
+func (c Client) GetDnsRecordsFromLogicalSwitch(logicalSwitch string) (string, error) {
+	output, err := c.ovnNbCommand("get", "Logical_Switch", logicalSwitch, "dns_records")
+	if err != nil {
+		return output, fmt.Errorf("failed to get dns from logical_switch, %v", err)
+	}
+	output = strings.Trim(output, "[")
+	output = strings.Trim(output, "]")
+	return output, nil
+}
+
 func (c Client) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
 	if err := c.addLoadBalancerToLogicalSwitch(tcpLb, ls); err != nil {
 		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)

@@ -54,6 +54,7 @@ type Controller struct {
 	addOrUpdateVpcQueue  workqueue.RateLimitingInterface
 	delVpcQueue          workqueue.RateLimitingInterface
 	updateVpcStatusQueue workqueue.RateLimitingInterface
+	vpcKeyMutex          *keymutex.KeyMutex
 
 	vpcNatGatewayLister           kubeovnlister.VpcNatGatewayLister
 	vpcNatGatewaySynced           cache.InformerSynced
@@ -177,6 +178,7 @@ func NewController(config *Configuration) *Controller {
 		addOrUpdateVpcQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpc"),
 		delVpcQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpc"),
 		updateVpcStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcStatus"),
+		vpcKeyMutex:          keymutex.New(97),
 
 		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
 		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,

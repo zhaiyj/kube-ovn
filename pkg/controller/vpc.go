@@ -463,9 +463,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		for _, svc := range svcs {
 			if svc.Annotations[util.VpcAnnotation] == vpc.Name {
 				c.updateServiceQueue.Add(fmt.Sprintf("%s/%s", svc.Namespace, svc.Name))
-			} else if vpc.Namespace == util.DefaultVpc {
-
 			}
+		}
+	}
+	if c.config.EnableMcast {
+		if err = c.ovnClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
+			klog.Errorf("failed to set lr '%s' multicast mode", vpc.Name, err)
+		}
+	} else {
+		if err = c.ovnClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
+			klog.Errorf("failed to unset lr '%s' multicast mode", vpc.Name, err)
 		}
 	}
 

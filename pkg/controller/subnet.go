@@ -637,6 +637,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	if c.config.EnableMcast {
+		if err = c.ovnClient.SetLogicalSwitchMulticast(subnet.Name, vpc.Name, subnet.Spec.Gateway); err != nil {
+			klog.Errorf("failed to set ls '%s' multicast mode, %v", subnet.Name, err)
+			return err
+		}
+	} else {
+		if err = c.ovnClient.UnsetLogicalSwitchMulticast(subnet.Name); err != nil {
+			klog.Errorf("failed to unset ls '%s' multicast mode, %v", subnet.Name, err)
+			return err
+		}
+	}
+
 	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
 	dhcpOptionsUUIDs, err = c.ovnClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP)
 	if err != nil {

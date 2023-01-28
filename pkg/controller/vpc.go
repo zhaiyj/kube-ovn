@@ -103,6 +103,9 @@ func (c *Controller) runDelVpcWorker() {
 }
 
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
+	c.vpcKeyMutex.Lock(vpc.Name)
+	defer c.vpcKeyMutex.Unlock(vpc.Name)
+
 	if err := c.deleteVpcLb(vpc); err != nil {
 		return err
 	}
@@ -111,10 +114,21 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	if err != nil {
 		return err
 	}
+
+	if vpc.Annotations[util.DnsEnableAnnotation] == "true" {
+		// delete dns and clear dns_records from logical_switch
+		if err := c.destroyVpcDns(vpc); err != nil {
+			klog.Errorf("failed to delete dns and clear dns_records from logical_switch %v", err)
+			return err
+		}
+	}
 	return nil
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
+	c.vpcKeyMutex.Lock(key)
+	defer c.vpcKeyMutex.Unlock(key)
+
 	orivpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -255,6 +269,9 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
+	c.vpcKeyMutex.Lock(key)
+	defer c.vpcKeyMutex.Unlock(key)
+
 	orivpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -377,6 +394,32 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	needUpdateSvc := false
+	if vpc.Annotations[util.DnsEnableAnnotation] == "true" && vpc.Annotations[util.DnsUuidAnnotation] == "" {
+		// create dns and set dns_records to logical_switch
+		if err := c.createDnsAndSetToLogicalSwitch(vpc); err != nil {
+			klog.Errorf("failed to create dns and set dns to logical_switch %v", err)
+			return err
+		}
+		needUpdateSvc = true
+		// if err := c.setRecordsToRelatedServices(vpc); err != nil {
+		// 	klog.Errorf("failed to set dns_records by related services %v", err)
+		// 	return err
+		// }
+	} else if vpc.Annotations[util.DnsEnableAnnotation] != "true" && vpc.Annotations[util.DnsUuidAnnotation] != "" {
+		// delete dns and clear dns_records from logical_switch
+		if err := c.destroyVpcDns(vpc); err != nil {
+			klog.Errorf("failed to delete dns and clear dns_records from logical_switch %v", err)
+			return err
+		}
+		// remove annotation from vpc
+		delete(vpc.Annotations, util.DnsUuidAnnotation)
+		if err = c.patchVpc(vpc); err != nil {
+			klog.Errorf("failed to patch vpc %s: %v", vpc.Name, err)
+			return err
+		}
+	}
+
 	if len(vpc.Annotations) != 0 && strings.ToLower(vpc.Annotations[util.VpcLbAnnotation]) == "on" {
 		if err = c.createVpcLb(vpc); err != nil {
 			return err
@@ -401,6 +444,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 					return err
 				}
+				needUpdateSvc = true
 			} else if value == "false" {
 				// remove lb from ls
 				if err := c.ovnClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
@@ -409,7 +453,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 		}
-
+	}
+	if needUpdateSvc {
 		svcs, err := c.servicesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list svc, %v", err)
@@ -424,6 +469,17 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) patchVpc(vpc *kubeovnv1.Vpc) error {
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.JSONPatchType, generatePatchPayload(vpc.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to patch vpc %s: %v", vpc.Name, err)
+		return err
+	}
 	return nil
 }
 
@@ -550,10 +606,14 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 	}
 
 	if changed {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update vpc %s: %v", vpc.Name, err)
+		if err := c.patchVpc(vpc); err != nil {
+			klog.Errorf("failed to patch vpc %s: %v", vpc.Name, err)
 			return err
 		}
+		// if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		// 	klog.Errorf("failed to update vpc %s: %v", vpc.Name, err)
+		// 	return err
+		// }
 	}
 
 	return nil
@@ -699,6 +759,77 @@ func (c *Controller) createVpcRouter(lr string) error {
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.ovnClient.DeleteLogicalRouter(lr)
+}
+
+func (c *Controller) createDnsAndSetToLogicalSwitch(vpc *kubeovnv1.Vpc) error {
+	// create dns if uuid not found
+	dnsUuidStr, ok := vpc.Annotations[util.DnsUuidAnnotation]
+	if !ok || dnsUuidStr == "" {
+		dnsUuid, err := c.ovnClient.CreateDns(vpc.Name)
+		if err != nil {
+			klog.Errorf("failed to create dns for vpc %s, %v", vpc.Name, err)
+			return err
+		}
+		dnsUuidStr = dnsUuid
+		// set annotation to vpc
+		vpc.Annotations[util.DnsUuidAnnotation] = dnsUuidStr
+
+		if err = c.patchVpc(vpc); err != nil {
+			klog.Errorf("failed to patch vpc %s: %v", vpc.Name, err)
+			return err
+		}
+		// if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		// 	klog.Errorf("failed to update vpc %s %s, %v", vpc.Name, err)
+		// 	return err
+		// }
+	}
+
+	// set dns to logical_switch if dns_record not found
+	for _, subnetName := range vpc.Status.Subnets {
+		if _, err := c.subnetsLister.Get(subnetName); err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		if err := c.ovnClient.SetDnsRecordsToLogicalSwitch(subnetName, dnsUuidStr); err != nil {
+			klog.Errorf("failed to set dns_records %v to logical_switch %v, %v", dnsUuidStr, subnetName, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) destroyVpcDns(vpc *kubeovnv1.Vpc) error {
+	uuid, err := c.ovnClient.FindDns(vpc.Name)
+	if err != nil {
+		return err
+	}
+	if uuid != "" {
+		// destroy dns
+		if err := c.ovnClient.DestroyDns(uuid); err != nil {
+			klog.Errorf("failed to destroy dns %s, %v", uuid, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) setRecordsToRelatedServices(vpc *kubeovnv1.Vpc) error {
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcAnnotation: vpc.Name}})
+	svcs, err := c.servicesLister.List(sel)
+	if err != nil {
+		klog.Errorf("failed to list service by vpc %s, %v", vpc.Name, err)
+		return err
+	}
+	for _, svc := range svcs {
+		if err := c.setDnsRecords(vpc, svc.Name, svc.Spec.ClusterIP); err != nil {
+			klog.Errorf("failed to set records to dns, %v", err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) runProtectLoadBalancer() {

@@ -163,6 +163,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
 		return err
 	}
+	if vpc.Annotations[util.VpcEnableOvnLbAnnotation] != "true" {
+		return nil
+	}
 
 	if svcVpc := svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
 		if svc.Annotations == nil {

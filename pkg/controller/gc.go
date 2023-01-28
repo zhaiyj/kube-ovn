@@ -415,6 +415,9 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 	var vpcLbs []string
 	for _, vpc := range vpcs {
+		if vpc.Annotations[util.VpcEnableOvnLbAnnotation] != "true" {
+			continue
+		}
 		tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
 		tcpSessLb, udpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, tcpSessLb, udpSessLb)

@@ -27,8 +27,9 @@ const (
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
 
-	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
-	VpcAnnotation           = "ovn.kubernetes.io/vpc"
+	LogicalRouterAnnotation  = "ovn.kubernetes.io/logical_router"
+	VpcAnnotation            = "ovn.kubernetes.io/vpc"
+	VpcEnableOvnLbAnnotation = "ovn.kubernetes.io/enable_lb"
 
 	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
 	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"

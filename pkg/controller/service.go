@@ -6,6 +6,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -185,6 +186,18 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 	}
 
+	vpc, err := c.vpcsLister.Get(service.Vpc)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc '%s', %v", service.Vpc, err)
+		return err
+	}
+	if vpc.Annotations[util.VpcEnableOvnLbAnnotation] != "true" {
+		return nil
+	}
+
 	vpcLbConfig := c.GenVpcLoadBalancer(service.Vpc)
 	vip := service.Vip
 	if service.Protocol == v1.ProtocolTCP {
@@ -240,6 +253,9 @@ func (c *Controller) handleUpdateService(key string) error {
 	if err != nil {
 		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
 		return err
+	}
+	if vpc.Annotations[util.VpcEnableOvnLbAnnotation] != "true" {
+		return nil
 	}
 
 	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer

@@ -414,6 +414,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)
+	// protect load balancer
+	c.runProtectLoadBalancer()
+
 	<-stopCh
 	klog.Info("Shutting down workers")
 }

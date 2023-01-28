@@ -399,6 +399,48 @@ func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, erro
 	return result, nil
 }
 
+func (c Client) SetLogicalSwitchMulticast(ls, lr, gateway string) (err error) {
+	mac := util.GenerateMac()
+	if lr != "" && lr != "ovn-cluster" {
+		results, err := c.CustomFindEntity("logical_router_port", []string{"mac"},
+			fmt.Sprintf("name=%s-%s", lr, ls))
+		if err != nil {
+			klog.Errorf("failed to list logical_router_port, %v", err)
+			return err
+		}
+		if len(results) > 0 {
+			mac = results[0]["mac"][0]
+		}
+	}
+
+	cmd := []string{"set", "logical_switch", ls, fmt.Sprintf("other_config:mcast_eth_src=%s", mac),
+		"other_config:mcast_querier=true", "other_config:mcast_snoop=true", "other_config:mcast_flood_unregistered=false"}
+
+	ipStr := strings.Split(gateway, ",")
+	cmd = append(cmd, fmt.Sprintf("other_config:mcast_ip4_src=%s", ipStr[0]))
+	if len(ipStr) == 2 {
+		cmd = append(cmd, fmt.Sprintf("other_config:mcast_ip6_src=%s", ipStr[1]))
+	}
+	_, err = c.ovnNbCommand(cmd...)
+	return err
+}
+
+func (c Client) UnsetLogicalSwitchMulticast(ls string) (err error) {
+	_, err = c.ovnNbCommand("set", "logical_switch", ls, "other_config:mcast_querier=false", "other_config:mcast_snoop=false",
+		"other_config:mcast_flood_unregistered=true")
+	return err
+}
+
+func (c Client) SetLogicalRouterMulticast(lr string) (err error) {
+	_, err = c.ovnNbCommand("set", "logical_router", lr, "options:mcast_relay=true")
+	return err
+}
+
+func (c Client) UnsetLogicalRouterMulticast(lr string) (err error) {
+	_, err = c.ovnNbCommand("set", "logical_router", lr, "options:mcast_relay=false")
+	return err
+}
+
 func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")

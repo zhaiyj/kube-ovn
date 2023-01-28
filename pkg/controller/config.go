@@ -69,6 +69,7 @@ type Configuration struct {
 	EnableLb          bool
 	EnableNP          bool
 	EnableExternalVpc bool
+	EnableMcast       bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -111,6 +112,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableMcast          = pflag.Bool("enable-multicast", false, "Enable multicast support")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -164,6 +166,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableLb:                      *argEnableLb,
 		EnableNP:                      *argEnableNP,
 		EnableExternalVpc:             *argEnableExternalVpc,
+		EnableMcast:                   *argEnableMcast,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

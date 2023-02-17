@@ -1540,7 +1540,8 @@ func (c *Controller) recycleAddress(ipStrList []string, subnet string) error {
 			if _, err := c.podsLister.Pods(ipCrd.Spec.Namespace).Get(ipCrd.Spec.PodName); err != nil {
 				if k8serrors.IsNotFound(err) {
 					// delete ip crd that associated with pod which does not exist anymore
-					if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCrd.Name, metav1.DeleteOptions{}); err != nil {
+					err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCrd.Name, metav1.DeleteOptions{})
+					if err != nil && !k8serrors.IsNotFound(err) {
 						klog.Errorf("failed to delete ip crd:%s, err:%v", ipCrd.Name, err)
 						return err
 					}

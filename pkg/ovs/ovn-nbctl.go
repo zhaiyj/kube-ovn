@@ -176,6 +176,24 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 	return nil
 }
 
+func (c *Client) SetPortDhcpOptions(port string, options *DHCPOptionsUUIDs) error {
+	var ovnCommand []string
+
+	ovnCommand = append(ovnCommand,
+		"lsp-set-dhcpv4-options", port, options.DHCPv4OptionsUUID)
+
+	ovnCommand = append(ovnCommand, "--")
+	ovnCommand = append(ovnCommand,
+		"lsp-set-dhcpv6-options", port, options.DHCPv6OptionsUUID)
+
+	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
+		klog.Errorf("create port %s failed: %v", port, err)
+		return err
+	}
+
+	return nil
+}
+
 func (c Client) SetPortSecurity(portSecurity bool, ls, port, mac, ipStr, vips string) error {
 	var addresses []string
 	ovnCommand := []string{"lsp-set-port-security", port}

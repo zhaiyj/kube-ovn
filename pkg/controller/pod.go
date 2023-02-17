@@ -891,6 +891,22 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 				return errors.New("AddressOutOfRange")
 			}
 		}
+
+		// validate dhcp option
+		var dhcpOptions *ovs.DHCPOptionsUUIDs
+		if podNet.Subnet.Spec.EnableDHCP {
+			dhcpOptions = &ovs.DHCPOptionsUUIDs{
+				DHCPv4OptionsUUID: podNet.Subnet.Status.DHCPv4OptionsUUID,
+				DHCPv6OptionsUUID: podNet.Subnet.Status.DHCPv6OptionsUUID,
+			}
+			if (v6 != nil && dhcpOptions.DHCPv6OptionsUUID == "") ||
+				(v4 != nil && dhcpOptions.DHCPv4OptionsUUID == "") {
+				return fmt.Errorf("failed to get DHCPv6OptionsUUID from subnet %s, please check", podNet.Subnet.Name)
+			}
+		} else {
+			dhcpOptions = &ovs.DHCPOptionsUUIDs{}
+		}
+
 		nicName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 		klog.Infof("migrate pod nic ip addr from %s to %s", nowIPAddress, migrateIPAddress)
 		// change pod annotation
@@ -924,6 +940,13 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 				return err
 			}
 		}
+
+		// sync dhcp options
+		err = c.ovnClient.SetPortDhcpOptions(nicName, dhcpOptions)
+		if err != nil {
+			return fmt.Errorf("failed to set port %s dhcp options, %s", nicName, err.Error())
+		}
+
 		// update ip crd
 		if err = c.updateIPCRD(context.Background(), nicName, migrateIPAddress, v4Str, v6Str); err != nil {
 			return err

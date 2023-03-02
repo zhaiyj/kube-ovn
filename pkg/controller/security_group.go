@@ -192,9 +192,6 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	}
 	var ports []string
 	for _, ret := range results {
-		if len(ret["port_security"]) < 2 {
-			continue
-		}
 		ports = append(ports, ret["name"][0])
 	}
 	return c.ovnClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), ports)
@@ -371,10 +368,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	var v4s, v6s []string
 	var ports []string
 	for _, ret := range results {
-		if len(ret["port_security"]) < 2 {
+		ports = append(ports, ret["name"][0])
+		if len(ret["port_security"]) == 0 {
 			continue
 		}
-		ports = append(ports, ret["name"][0])
 		for _, address := range ret["port_security"][1:] {
 			if strings.Contains(address, ":") {
 				v6s = append(v6s, address)

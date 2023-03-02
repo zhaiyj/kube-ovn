@@ -324,15 +324,15 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 		}
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
+	}
 
-		if securityGroups != "" {
-			sgList := strings.Split(securityGroups, ",")
+	if securityGroups != "" {
+		sgList := strings.Split(securityGroups, ",")
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", strings.ReplaceAll(securityGroups, ",", "/")))
+		for _, sg := range sgList {
 			ovnCommand = append(ovnCommand,
-				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", strings.ReplaceAll(securityGroups, ",", "/")))
-			for _, sg := range sgList {
-				ovnCommand = append(ovnCommand,
-					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
-			}
+				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
 		}
 	}
 

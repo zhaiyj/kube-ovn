@@ -634,14 +634,12 @@ func (c *Controller) handleAddPod(key string) error {
 				}
 			}
 
-			if portSecurity {
-				sgNames := strings.Split(securityGroupAnnotation, ",")
-				for _, sgName := range sgNames {
-					if sgName == "" {
-						continue
-					}
-					c.syncSgPortsQueue.Add(sgName)
+			sgNames := strings.Split(securityGroupAnnotation, ",")
+			for _, sgName := range sgNames {
+				if sgName == "" {
+					continue
 				}
+				c.syncSgPortsQueue.Add(sgName)
 			}
 
 			if vips != "" {
@@ -1026,11 +1024,8 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		}
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 
-		var securityGroups string
-		if portSecurity {
-			securityGroups = pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			securityGroups = strings.ReplaceAll(securityGroups, " ", "")
-		}
+		securityGroups := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+		securityGroups = strings.ReplaceAll(securityGroups, " ", "")
 		if err = c.reconcilePortSg(ovs.PodNameToPortName(name, namespace, podNet.ProviderName), securityGroups); err != nil {
 			klog.Errorf("reconcilePortSg failed. %v", err)
 			return err

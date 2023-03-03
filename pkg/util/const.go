@@ -95,6 +95,7 @@ const (
 	NodeAllowPriority = "3000"
 
 	SecurityGroupHighestPriority = "2300"
+	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
 

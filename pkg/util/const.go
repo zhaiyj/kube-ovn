@@ -26,6 +26,7 @@ const (
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
+	SwitchLBRuleVipsAnnotation  = "ovn.kubernetes.io/switch_lb_vip"
 
 	LogicalRouterAnnotation  = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation            = "ovn.kubernetes.io/vpc"

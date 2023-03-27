@@ -76,7 +76,9 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	svc := obj.(*v1.Service)
 	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
-	if svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+
+	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
+	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 
 		if c.config.EnableNP {
 			var netpols []string
@@ -96,6 +98,9 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 				Vip:      fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port),
 				Protocol: port.Protocol,
 				Vpc:      svc.Annotations[util.VpcAnnotation],
+			}
+			if vip != "" {
+				vpcSvc.Vip = fmt.Sprintf("%s:%d", vip, port.Port)
 			}
 			klog.Infof("delete vpc service %v", vpcSvc)
 			c.deleteServiceQueue.Add(vpcSvc)

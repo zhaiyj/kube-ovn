@@ -930,7 +930,7 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 			return err
 		}
 		// sync external id
-		if c.ovnClient.SetPortExternalIds(nicName, "ip", strings.ReplaceAll(migrateIPAddress, ",", "/")); err != nil {
+		if err = c.ovnClient.SetPortExternalIds(nicName, "ip", strings.ReplaceAll(migrateIPAddress, ",", "/")); err != nil {
 			klog.Errorf("failed to set port external ids, %v", err)
 			return err
 		}

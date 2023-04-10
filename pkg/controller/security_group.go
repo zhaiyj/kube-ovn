@@ -370,6 +370,17 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	for _, ret := range results {
 		ports = append(ports, ret["name"][0])
 		if len(ret["port_security"]) == 0 {
+			ipCr, err := c.ipsLister.Get(ret["name"][0])
+			if err != nil {
+				klog.Errorf("failed to get ip CR %s, %v", ret["name"][0], err)
+				continue
+			}
+			if ipCr.Spec.V4IPAddress != "" {
+				v4s = append(v4s, ipCr.Spec.V4IPAddress)
+			}
+			if ipCr.Spec.V6IPAddress != "" {
+				v6s = append(v6s, ipCr.Spec.V6IPAddress)
+			}
 			continue
 		}
 		for _, address := range ret["port_security"][1:] {

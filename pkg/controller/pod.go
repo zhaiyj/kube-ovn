@@ -929,6 +929,11 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 			klog.Errorf("set port addresses failed, %v", err)
 			return err
 		}
+		// sync external id
+		if err = c.ovnClient.SetPortExternalIds(nicName, "ip", strings.ReplaceAll(migrateIPAddress, ",", "/")); err != nil {
+			klog.Errorf("failed to set port external ids, %v", err)
+			return err
+		}
 
 		// sync port security
 		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {

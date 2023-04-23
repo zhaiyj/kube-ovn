@@ -427,6 +427,10 @@ func (c *Controller) gcLoadBalancer() error {
 			lbUuid, err := c.ovnClient.FindLoadbalancer(tcpLb)
 			if err != nil {
 				klog.Errorf("failed to get lb %v", err)
+				continue
+			}
+			if lbUuid == "" {
+				continue
 			}
 			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
 			if err != nil {

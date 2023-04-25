@@ -58,6 +58,7 @@ const (
 	LiveMigrationAnnotationTemplate    = "%s.kubernetes.io/allow_live_migration"
 	DefaultRouteAnnotationTemplate     = "%s.kubernetes.io/default_route"
 	MigrateIpAddressAnnotationTemplate = "%s.kubernetes.io/migrate_ip_address"
+	MtuAnnotationTemplate              = "%s.kubernetes.io/mtu"
 
 	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
 	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"

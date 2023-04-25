@@ -201,6 +201,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
+		customMtuStr := pod.Annotations[fmt.Sprintf(util.MtuAnnotationTemplate, podRequest.Provider)]
+		if customMtu, err := strconv.Atoi(customMtuStr); err == nil && customMtu > 0 && customMtu < mtu {
+			mtu = customMtu
+		}
+
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)

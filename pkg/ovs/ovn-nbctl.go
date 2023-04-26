@@ -2524,7 +2524,7 @@ func (c *Client) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr str
 			mac := util.GenerateMac()
 			if len(dhcpV4OptionsStr) == 0 {
 				// default dhcp v4 options
-				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, v4Gateway, "169.254.0.254", mac)
+				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,dns_server=\"%s\"", 3600, v4Gateway, "169.254.0.254", mac, "{114.114.114.114, 8.8.8.8}")
 			}
 			dhcpV4OptionsUuid, err = c.createDHCPOptions(ls, v4CIDR, dhcpV4OptionsStr)
 			if err != nil {
@@ -2539,7 +2539,7 @@ func (c *Client) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr str
 				if len(mac) == 0 {
 					mac = util.GenerateMac()
 				}
-				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, v4Gateway, "169.254.0.254", mac)
+				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,dns_server=\"%s\"", 3600, v4Gateway, "169.254.0.254", mac, "{114.114.114.114, 8.8.8.8}")
 			}
 			_, err = c.ovnNbCommand("set", "dhcp_options", v4Options.UUID, fmt.Sprintf("cidr=%s", v4CIDR),
 				fmt.Sprintf("options=%s", strings.ReplaceAll(dhcpV4OptionsStr, ":", "\\:")))

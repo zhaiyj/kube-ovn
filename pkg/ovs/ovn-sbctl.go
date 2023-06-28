@@ -11,7 +11,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {
+func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
 	if os.Getenv("ENABLE_SSL") == "true" {
 		cmdArgs = append([]string{
@@ -50,7 +50,7 @@ func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
-func (c Client) DeleteChassisByNode(node string) error {
+func (c LegacyClient) DeleteChassisByNode(node string) error {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("external_ids:node=%s", node))
 	if err != nil {
 		return fmt.Errorf("failed to get node chassis %s, %v", node, err)
@@ -66,7 +66,7 @@ func (c Client) DeleteChassisByNode(node string) error {
 	return nil
 }
 
-func (c Client) DeleteChassisByName(chassisName string) error {
+func (c LegacyClient) DeleteChassisByName(chassisName string) error {
 	ovnVersion, err := c.GetVersion()
 	if err != nil {
 		return fmt.Errorf("fieled to get ovn version, %v", err)
@@ -82,7 +82,7 @@ func (c Client) DeleteChassisByName(chassisName string) error {
 	return nil
 }
 
-func (c Client) GetChassis(node string) (string, error) {
+func (c LegacyClient) GetChassis(node string) (string, error) {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
 	if err != nil {
 		return "", fmt.Errorf("failed to find node chassis %s, %v", node, err)
@@ -96,7 +96,7 @@ func (c Client) GetChassis(node string) (string, error) {
 	return strings.TrimSpace(output), nil
 }
 
-func (c Client) ChassisExist(chassisName string) (bool, error) {
+func (c LegacyClient) ChassisExist(chassisName string) (bool, error) {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("name=%s", chassisName))
 	if err != nil {
 		return false, fmt.Errorf("failed to find node chassis %s, %v", chassisName, err)
@@ -107,7 +107,7 @@ func (c Client) ChassisExist(chassisName string) (bool, error) {
 	return true, nil
 }
 
-func (c Client) InitChassisNodeTag(chassisName string, nodeName string) error {
+func (c LegacyClient) InitChassisNodeTag(chassisName string, nodeName string) error {
 	_, err := c.ovnSbCommand("set", "chassis", chassisName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName), fmt.Sprintf("external_ids:node=%s", nodeName))
 	if err != nil {
 		return fmt.Errorf("failed to set chassis external_ids, %v", err)
@@ -116,7 +116,7 @@ func (c Client) InitChassisNodeTag(chassisName string, nodeName string) error {
 }
 
 // GetAllChassis get all chassis init by kube-ovn
-func (c Client) GetAllChassis() ([]string, error) {
+func (c LegacyClient) GetAllChassis() ([]string, error) {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node chassis, %v", err)

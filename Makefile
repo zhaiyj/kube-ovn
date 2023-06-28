@@ -46,7 +46,7 @@ base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: release
-release: lint build-go
+release: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
@@ -267,15 +267,6 @@ kind-clean-cluster:
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
-
-.PHONY: lint
-lint:
-	@gofmt -d .
-	@if [ $$(gofmt -l . | wc -l) -ne 0 ]; then \
-		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
-	fi
-	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204,G601 ./...
 
 .PHONY: scan
 scan:

@@ -623,13 +623,13 @@ func (c *Controller) handleAddPod(key string) error {
 				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
-			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
+			if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
-				if err := c.ovnClient.EnablePortLayer2forward(subnet.Name, portName); err != nil {
+				if err := c.ovnLegacyClient.EnablePortLayer2forward(subnet.Name, portName); err != nil {
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "EnablePortLayer2forwardFailed", err.Error())
 					return err
 				}
@@ -694,15 +694,16 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+		if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+		if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 			return err
 		}
 	}
 
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
+	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	//ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -726,10 +727,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			} else if err != nil {
 				return err
 			}
-			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
 				return err
 			}
-			if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+			if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 				return err
 			}
 		}
@@ -742,20 +743,24 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 
 	// Add additional default ports to compatible with previous versions
-	ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider))
-	for _, portName := range ports {
-		sgs, err := c.getPortSg(portName)
+	additionalPort, _ := c.ovnClient.GetLogicalSwitchPort(ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider), true)
+	if additionalPort != nil {
+		ports = append(ports, *additionalPort)
+	}
+
+	for _, port := range ports {
+		sgs, err := c.getPortSg(&port)
 		if err != nil {
-			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
+			klog.Warningf("filed to get port '%s' sg, %v", port, err)
 		}
-		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", portName, err)
+		if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", port, err)
 			return err
 		}
 		if !keepIpCR {
-			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), port.Name, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", portName, err)
+					klog.Errorf("failed to delete ip %s, %v", port, err)
 					return err
 				}
 			}
@@ -925,29 +930,28 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 		}
 
 		// sync logical port address
-		if err = c.ovnClient.SetPortAddress(nicName, mac, migrateIPAddress); err != nil {
+		if err = c.ovnClient.SetLogicalSwitchPortAddress(nicName, mac, migrateIPAddress); err != nil {
 			klog.Errorf("set port addresses failed, %v", err)
 			return err
 		}
 		// sync external id
-		if err = c.ovnClient.SetPortExternalIds(nicName, "ip", strings.ReplaceAll(migrateIPAddress, ",", "/")); err != nil {
+		if err = c.ovnClient.SetLogicalSwitchPortExternalIds(nicName, map[string]string{"ip": strings.ReplaceAll(migrateIPAddress, ",", "/")}); err != nil {
 			klog.Errorf("failed to set port external ids, %v", err)
 			return err
 		}
 
 		// sync port security
 		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
-			portSecurity := true
 			ipStr := migrateIPAddress
 			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-			if err = c.ovnClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, nicName, mac, ipStr, vips); err != nil {
+			if err = c.ovnClient.SetLogicalSwitchPortSecurity(true, nicName, mac, ipStr, vips); err != nil {
 				klog.Errorf("setPortSecurity failed. %v", err)
 				return err
 			}
 		}
 
 		// sync dhcp options
-		err = c.ovnClient.SetPortDhcpOptions(nicName, dhcpOptions)
+		err = c.ovnLegacyClient.SetPortDhcpOptions(nicName, dhcpOptions)
 		if err != nil {
 			return fmt.Errorf("failed to set port %s dhcp options, %s", nicName, err.Error())
 		}
@@ -1026,7 +1030,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if err = c.ovnClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+		if err = c.ovnLegacyClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
 			klog.Errorf("setPortSecurity failed. %v", err)
 			return err
 		}
@@ -1102,7 +1106,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 					nextHop = addr
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, ovs.PolicySrcIP, podIP, nextHop); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -1123,7 +1127,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
-							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType); err != nil {
+							if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, ovs.PolicySrcIP, podAddr, nodeAddr.String()); err != nil {
 								klog.Errorf("failed to add static route, %v", err)
 								return err
 							}
@@ -1132,7 +1136,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation]); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
@@ -1140,12 +1144,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 			}
 
 			for _, ipStr := range strings.Split(podIP, ",") {
-				if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
+				if err := c.ovnLegacyClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
 					klog.Errorf("failed to add nat rules, %v", err)
 					return err
 				}
 
-				if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
+				if err := c.ovnLegacyClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
 					klog.Errorf("failed to add nat rules, %v", err)
 					return err
 				}
@@ -1656,25 +1660,23 @@ func (c *Controller) syncVmLiveMigrationPort() {
 		return
 	}
 	for _, subnet := range subnets {
+
 		// lists pods with the 'liveMigration' flag
-		ports, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
-			fmt.Sprintf("external_ids:ls=%s", subnet.Name),
-			"external_ids:liveMigration=1")
+		ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"ls": subnet.Name, "liveMigration": "1"})
 		if err != nil {
 			klog.Errorf("list logical_switch_port failed, %v", err)
 			return
 		}
 
 		for _, port := range ports {
-			addr, err := c.ipsLister.Get(port)
+			addr, err := c.ipsLister.Get(port.Name)
 			if err != nil {
 				klog.Errorf("get port ip failed, %v", err)
 				return
 			}
 			// lists pods with the same IP address
-			vmLsps, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
-				fmt.Sprintf("external_ids:ls=%s", subnet.Name),
-				fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
+			vmLsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true,
+				map[string]string{"ls": subnet.Name, "liveMigration": "1", "ip": strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")})
 			if err != nil {
 				klog.Errorf("list logical_switch_port failed, %v", err)
 				return
@@ -1682,11 +1684,11 @@ func (c *Controller) syncVmLiveMigrationPort() {
 
 			// reset addresses after live Migration
 			if len(vmLsps) == 1 {
-				if err = c.ovnClient.SetPortAddress(port, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
+				if err = c.ovnClient.SetLogicalSwitchPortAddress(port.Name, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
 					klog.Errorf("set port addresses failed, %v", err)
 					return
 				}
-				if err = c.ovnClient.SetPortExternalIds(port, "liveMigration", "0"); err != nil {
+				if err = c.ovnClient.SetLogicalSwitchPortExternalIds(port.Name, map[string]string{"liveMigration": "0"}); err != nil {
 					klog.Errorf("set port externalIds failed, %v", err)
 					return
 				}

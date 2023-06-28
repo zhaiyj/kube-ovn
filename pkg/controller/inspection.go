@@ -21,10 +21,15 @@ func (c *Controller) inspectPod() error {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	//lsps, err := c.ovnLegacyClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
+	}
+	klog.Infof("========== length of lsps is %d", len(lsps))
+	for _, lsp := range lsps {
+		klog.Infof("lsp %s", lsp.Name)
 	}
 	for _, oripod := range pods {
 		pod := oripod.DeepCopy()
@@ -41,7 +46,7 @@ func (c *Controller) inspectPod() error {
 				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 				isLspExist := false
 				for _, lsp := range lsps {
-					if portName == lsp {
+					if portName == lsp.Name {
 						isLspExist = true
 					}
 				}

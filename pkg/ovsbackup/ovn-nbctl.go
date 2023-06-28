@@ -2069,6 +2069,18 @@ func (c Client) CreateLocalnetPort(ls, port, provider string, vlanID int) error 
 	return nil
 }
 
+func GetSgPortGroupName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".", -1)
+}
+
+func GetSgV4AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v4", sgName), "-", ".", -1)
+}
+
+func GetSgV6AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".", -1)
+}
+
 func (c Client) CreateSgPortGroup(sgName string) error {
 	sgPortGroupName := GetSgPortGroupName(sgName)
 	output, err := c.ovnNbCommand(
@@ -2421,6 +2433,11 @@ func (c Client) SetPolicyRouteExternalIds(priority int32, match string, nameIpMa
 		return fmt.Errorf("failed to set logical-router-policy externalIds, %v", err)
 	}
 	return nil
+}
+
+type DHCPOptionsUUIDs struct {
+	DHCPv4OptionsUUID string
+	DHCPv6OptionsUUID string
 }
 
 type dhcpOptions struct {

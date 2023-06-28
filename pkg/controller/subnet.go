@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -608,7 +610,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name, c.config.EnableExternalVpc)
+	exist, err := c.ovnLegacyClient.LogicalSwitchExists(subnet.Name, c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
 		c.patchSubnetStatus(subnet, "ListLogicalSwitchFailed", err.Error())
@@ -619,18 +621,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
-		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
+		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
 	} else {
 		// logical switch exists, only update other_config
-		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
+		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}
 		if !needRouter {
-			if err := c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
+			if err := c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)
 				return err
 			}
@@ -638,26 +640,26 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if c.config.EnableMcast {
-		if err = c.ovnClient.SetLogicalSwitchMulticast(subnet.Name, vpc.Name, subnet.Spec.Gateway); err != nil {
+		if err = c.ovnLegacyClient.SetLogicalSwitchMulticast(subnet.Name, vpc.Name, subnet.Spec.Gateway); err != nil {
 			klog.Errorf("failed to set ls '%s' multicast mode, %v", subnet.Name, err)
 			return err
 		}
 	} else {
-		if err = c.ovnClient.UnsetLogicalSwitchMulticast(subnet.Name); err != nil {
+		if err = c.ovnLegacyClient.UnsetLogicalSwitchMulticast(subnet.Name); err != nil {
 			klog.Errorf("failed to unset ls '%s' multicast mode, %v", subnet.Name, err)
 			return err
 		}
 	}
 
 	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
-	dhcpOptionsUUIDs, err = c.ovnClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP)
+	dhcpOptionsUUIDs, err = c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP)
 	if err != nil {
 		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
 		return err
 	}
 
 	if needRouter {
-		if err := c.ovnClient.UpdateRouterPortIPv6RA(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
+		if err := c.ovnLegacyClient.UpdateRouterPortIPv6RA(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
 			klog.Errorf("failed to update ipv6 ra configs for router port %s-%s, %v", vpc.Status.Router, subnet.Name, err)
 			return err
 		}
@@ -698,7 +700,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if vpc.Annotations[util.VpcEnableOvnLbAnnotation] == "true" && c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if err := c.ovnClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 			return err
 		}
@@ -712,21 +714,21 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if subnet.Spec.Private {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 			protocol := util.CheckProtocol(cidrBlock)
-			if err := c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, protocol, cidrBlock, subnet.Spec.AllowSubnets); err != nil {
+			if err := c.ovnLegacyClient.SetPrivateLogicalSwitch(subnet.Name, protocol, cidrBlock, subnet.Spec.AllowSubnets); err != nil {
 				c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
 				return err
 			}
 			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 		}
 	} else {
-		if err := c.ovnClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
+		if err := c.ovnLegacyClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		}
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
-	if err := c.ovnClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
+	if err := c.ovnLegacyClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
 		return err
 	}
@@ -734,7 +736,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	// vpc dns
 	if vpc.Annotations[util.DnsEnableAnnotation] == "true" {
 		if dnsUuidStr := vpc.Annotations[util.DnsUuidAnnotation]; dnsUuidStr != "" {
-			if err := c.ovnClient.SetDnsRecordsToLogicalSwitch(subnet.Name, dnsUuidStr); err != nil {
+			if err := c.ovnLegacyClient.SetDnsRecordsToLogicalSwitch(subnet.Name, dnsUuidStr); err != nil {
 				klog.Errorf("failed to set dns_records %v to logical_switch %v, %v", dnsUuidStr, subnet.Name, err)
 				return err
 			}
@@ -788,23 +790,23 @@ func (c *Controller) attachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 	gateway6 = util.GetIpAddrWithMask(gateway6, prefix)
 
 	// config router port
-	if exist, err := c.ovnClient.IsRouterPortExist(subnet.Name, extRouter); err != nil {
+	if exist, err := c.ovnLegacyClient.IsRouterPortExist(subnet.Name, extRouter); err != nil {
 		klog.Errorf("failed to check router port, %v", err)
 		return err
 	} else if !exist {
-		if err := c.ovnClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, util.GenerateMac()); err != nil {
+		if err := c.ovnLegacyClient.CreateRouterPort(subnet.Name, extVpc.Name, gateway6, util.GenerateMac()); err != nil {
 			klog.Errorf("failed to attach extension router port to %s, %v", subnet.Name, err)
 			return err
 		}
 	} else {
-		if err := c.ovnClient.SetRouterPortNetworks(subnet.Name, extVpc.Name, gateway6); err != nil {
+		if err := c.ovnLegacyClient.SetRouterPortNetworks(subnet.Name, extVpc.Name, gateway6); err != nil {
 			klog.Errorf("failed to set networks '%s' to extension router port, %v", gateway6, err)
 			return err
 		}
 	}
 
 	// update RA config
-	if err := c.ovnClient.UpdateRouterPortIPv6RA(subnet.Name, extVpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
+	if err := c.ovnLegacyClient.UpdateRouterPortIPv6RA(subnet.Name, extVpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
 		klog.Errorf("failed to update ipv6 ra configs for router port %s-%s, %v", extVpc.Status.Router, subnet.Name, err)
 		return err
 	}
@@ -837,7 +839,7 @@ func (c *Controller) detachExtensionIPv6RA(subnet *kubeovnv1.Subnet) error {
 		if !vpc.Status.Standby {
 			continue
 		}
-		if err := c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
+		if err := c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 			klog.Errorf("failed to detach extension router port from %s, %v", subnet.Name, err)
 			return err
 		}
@@ -861,12 +863,12 @@ func (c *Controller) handleNodeAddressSetForSubnet(cidr, node, nodeIP string, af
 
 	asName := nodeUnderlayAddressSetName(node, af)
 	if delete {
-		if err := c.ovnClient.RemoveAddressSetAddresses(asName, cidr); err != nil {
+		if err := c.ovnLegacyClient.RemoveAddressSetAddresses(asName, cidr); err != nil {
 			klog.Errorf("failed to remove CIDR %s from address set %s: %v", cidr, asName, err)
 			return err
 		}
 	} else {
-		if err := c.ovnClient.AddAddressSetAddresses(asName, cidr); err != nil {
+		if err := c.ovnLegacyClient.AddAddressSetAddresses(asName, cidr); err != nil {
 			klog.Errorf("failed to add CIDR %s to address set %s: %v", cidr, asName, err)
 			return err
 		}
@@ -930,7 +932,7 @@ func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	c.ipam.DeleteSubnet(key)
 
-	exist, err := c.ovnClient.LogicalSwitchExists(key, c.config.EnableExternalVpc)
+	exist, err := c.ovnLegacyClient.LogicalSwitchExists(key, c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
 		return err
@@ -939,17 +941,17 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		return nil
 	}
 
-	if err = c.ovnClient.CleanLogicalSwitchAcl(key); err != nil {
+	if err = c.ovnLegacyClient.CleanLogicalSwitchAcl(key); err != nil {
 		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
 		return err
 	}
 
-	if err = c.ovnClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
+	if err = c.ovnLegacyClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
 		klog.Errorf("failed to delete dhcp options of logical switch %s %v", key, err)
 		return err
 	}
 
-	if err = c.ovnClient.DeleteLogicalSwitch(key); err != nil {
+	if err = c.ovnLegacyClient.DeleteLogicalSwitch(key); err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", key, err)
 		return err
 	}
@@ -989,13 +991,13 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	}
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err == nil && vpc.Status.Router != "" {
-		if err = c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
+		if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 			klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 			return err
 		}
 	} else {
 		if k8serrors.IsNotFound(err) {
-			if err = c.ovnClient.RemoveRouterPort(subnet.Name, util.DefaultVpc); err != nil {
+			if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, util.DefaultVpc); err != nil {
 				klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 				return err
 			}
@@ -1080,42 +1082,52 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	// 1. get all vip port
-	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "options"}, "type=virtual", fmt.Sprintf("external_ids:ls=%s", subnet.Name))
+	lsps, err := c.ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "virtual"
+	})
 	if err != nil {
-		klog.Errorf("failed to find virtual port, %v", err)
+		klog.Errorf("failed to find virtual port for subnet %s: %v", subnet.Name, err)
 		return err
 	}
+	/* filter all invaild virtual port */
+	existVips := make(map[string]string) // key is vip, value is port name
+	for _, lsp := range lsps {
+		vip, ok := lsp.Options["virtual-ip"]
+		if !ok {
+			continue // ingnore vip which is empty
+		}
 
-	// 2. remove no need port
-	var existVips []string
-	for _, ret := range results {
-		options := ret["options"]
-		for _, value := range options {
-			if !strings.HasPrefix(value, "virtual-ip=") {
-				continue
-			}
-			vip := strings.TrimPrefix(value, "virtual-ip=")
-			if vip == "" || net.ParseIP(vip) == nil {
-				continue
-			}
-			if !util.ContainsString(subnet.Spec.Vips, vip) {
-				if err = c.ovnClient.DeleteLogicalSwitchPort(ret["name"][0]); err != nil {
-					klog.Errorf("failed to delete virtual port, %v", err)
-					return err
-				}
-			} else {
-				existVips = append(existVips, vip)
-			}
+		if net.ParseIP(vip) == nil {
+			continue // ingnore invalid vip
+		}
+
+		existVips[vip] = lsp.Name
+	}
+
+	/* filter virtual port to be added and old virtual port to be deleted */
+	var newVips []string
+	for _, vip := range subnet.Spec.Vips {
+		if _, ok := existVips[vip]; !ok {
+			// new virtual port to be added
+			newVips = append(newVips, vip)
+		} else {
+			// delete old virtual port that do not need to be deleted
+			delete(existVips, vip)
 		}
 	}
 
-	// 3. create new port
-	newVips := util.DiffStringSlice(existVips, subnet.Spec.Vips)
-	for _, vip := range newVips {
-		if err = c.ovnClient.CreateVirtualPort(subnet.Name, vip); err != nil {
-			klog.Errorf("failed to create virtual port, %v", err)
+	// delete old virtual ports
+	for _, lspName := range existVips {
+		if err = c.ovnClient.DeleteLogicalSwitchPort(lspName); err != nil {
+			klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", lspName, subnet.Name, err)
 			return err
 		}
+	}
+
+	// add new virtual port
+	if err = c.ovnClient.CreateVirtualLogicalSwitchPorts(subnet.Name, newVips...); err != nil {
+		klog.Errorf("create virtual port with vips %v from logical switch %s: %v", newVips, subnet.Name, err)
+		return err
 	}
 	c.syncVirtualPortsQueue.Add(subnet.Name)
 	return nil
@@ -1131,24 +1143,29 @@ func (c *Controller) syncVirtualPort(key string) error {
 			return err
 		}
 	}
-	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "external_ids"},
-		fmt.Sprintf("external_ids:ls=%s", subnet.Name), "external_ids:attach-vips=true")
+	if len(subnet.Spec.Vips) == 0 {
+		return nil
+	}
+
+	externalIDs := map[string]string{
+		logicalSwitchKey: subnet.Name,
+		"attach-vips":    "true",
+	}
+
+	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, externalIDs)
 	if err != nil {
-		klog.Errorf("failed to list logical_switch_port, %v", err)
+		klog.Errorf("list logical switch %s ports: %v", subnet.Name, err)
 		return err
 	}
+
 	vipVirtualParentsMap := map[string][]string{}
-	for _, ret := range results {
+	for _, lsp := range lsps {
 		var associatedVips []string
-		for _, value := range ret["external_ids"] {
-			if strings.HasPrefix(value, "vips") {
-				vips := strings.Split(value, "=")[1]
-				associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
-			}
-		}
+		vips := lsp.ExternalIDs["vips"]
+		associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
 		klog.Infof("associatedVips %v", associatedVips)
 		for _, vip := range associatedVips {
-			vipVirtualParentsMap[vip] = append(vipVirtualParentsMap[vip], ret["name"][0])
+			vipVirtualParentsMap[vip] = append(vipVirtualParentsMap[vip], lsp.Name)
 		}
 	}
 
@@ -1161,8 +1178,8 @@ func (c *Controller) syncVirtualPort(key string) error {
 		if value, exist := vipVirtualParentsMap[vip]; exist {
 			virtualParents = value
 		}
-		if err = c.ovnClient.SetVirtualParents(subnet.Name, vip, strings.Join(virtualParents, ",")); err != nil {
-			klog.Errorf("failed to set vip %s virtual parents, %v", vip, err)
+		if err = c.ovnClient.SetLogicalSwitchPortVirtualParents(subnet.Name, strings.Join(virtualParents, ","), vip); err != nil {
+			klog.Errorf("set vip %s virtual parents %v: %v", vip, virtualParents, err)
 			return err
 		}
 	}
@@ -1249,11 +1266,11 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 		}
 
 		if !subnet.Spec.LogicalGateway {
-			if err := c.ovnClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
 				klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
 				return err
 			}
-			if err := c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
+			if err := c.ovnLegacyClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
 				klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
 				return err
 			}
@@ -1299,7 +1316,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					nextHop = pod.Annotations[util.NorthGatewayAnnotation]
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop); err != nil {
 					klog.Errorf("add static route failed, %v", err)
 					return err
 				}
@@ -1352,7 +1369,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				klog.Infof("subnet %s adds centralized gw %v", subnet.Name, nextHops)
 
 				for _, nextHop := range nextHops {
-					if err = c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, cidr, nextHop, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
+					if err = c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, ovs.PolicySrcIP, cidr, nextHop); err != nil {
 						klog.Errorf("failed to add static route: %v", err)
 						return err
 					}
@@ -1381,7 +1398,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subnet) error {
 	for _, ipStr := range strings.Split(ip, ",") {
-		if err := c.ovnClient.DeleteStaticRoute(ipStr, router); err != nil {
+		if err := c.ovnLegacyClient.DeleteStaticRoute(ipStr, router); err != nil {
 			klog.Errorf("failed to delete static route %s, %v", ipStr, err)
 			return err
 		}
@@ -1403,7 +1420,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	localnetPort := ovs.PodNameToLocalnetName(subnet.Name)
-	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, vlan.Spec.ID); err != nil {
+	if err := c.ovnLegacyClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, vlan.Spec.ID); err != nil {
 		klog.Errorf("failed to create localnet port for subnet %s: %v", subnet.Name, err)
 		return err
 	}
@@ -1602,7 +1619,7 @@ func filterRepeatIPRange(mapIps map[string]ipam.IPRange) map[string]ipam.IPRange
 
 func (c *Controller) filterRepeatEcmpRoutes(nodeIps []string, cidr string) ([]string, error) {
 	var nextHops []string
-	routes, err := c.ovnClient.GetStaticRouteList(c.config.ClusterRouter)
+	routes, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
 	if err != nil {
 		klog.Errorf("failed to list static route: %v", err)
 		return nextHops, err

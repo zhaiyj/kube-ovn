@@ -205,13 +205,13 @@ func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
 
-	tcpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpLoadBalancer)
+	tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.TcpLoadBalancer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find tcp lb %v", err)
 	}
 	if tcpLb == "" {
 		klog.Infof("init cluster tcp load balancer %s", vpcLbConfig.TcpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpLoadBalancer, util.ProtocolTCP, "")
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.TcpLoadBalancer, util.ProtocolTCP, "")
 		if err != nil {
 			klog.Errorf("failed to crate cluster tcp load balancer %v", err)
 			return nil, err
@@ -220,13 +220,13 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		klog.Infof("tcp load balancer %s exists", tcpLb)
 	}
 
-	tcpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpSessLoadBalancer)
+	tcpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.TcpSessLoadBalancer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find tcp session lb %v", err)
 	}
 	if tcpSessionLb == "" {
 		klog.Infof("init cluster tcp session load balancer %s", vpcLbConfig.TcpSessLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
 		if err != nil {
 			klog.Errorf("failed to crate cluster tcp session load balancer %v", err)
 			return nil, err
@@ -235,13 +235,13 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		klog.Infof("tcp session load balancer %s exists", tcpSessionLb)
 	}
 
-	udpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpLoadBalancer)
+	udpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.UdpLoadBalancer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find udp lb %v", err)
 	}
 	if udpLb == "" {
 		klog.Infof("init cluster udp load balancer %s", vpcLbConfig.UdpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpLoadBalancer, util.ProtocolUDP, "")
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.UdpLoadBalancer, util.ProtocolUDP, "")
 		if err != nil {
 			klog.Errorf("failed to crate cluster udp load balancer %v", err)
 			return nil, err
@@ -250,13 +250,13 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		klog.Infof("udp load balancer %s exists", udpLb)
 	}
 
-	udpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpSessLoadBalancer)
+	udpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.UdpSessLoadBalancer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find udp session lb %v", err)
 	}
 	if udpSessionLb == "" {
 		klog.Infof("init cluster udp session load balancer %s", vpcLbConfig.UdpSessLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
 		if err != nil {
 			klog.Errorf("failed to crate cluster udp session load balancer %v", err)
 			return nil, err
@@ -303,7 +303,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	for _, oldPeer := range vpc.Status.VpcPeerings {
 		if !util.ContainsString(newPeers, oldPeer) {
-			if err = c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
+			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
 				klog.Errorf("failed to delete peer router port for vpc %s, %v", vpc.Name, err)
 				return err
 			}
@@ -312,7 +312,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if vpc.Name != util.DefaultVpc {
 		// handle static route
-		existRoute, err := c.ovnClient.GetStaticRouteList(vpc.Name)
+		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 			return err
@@ -324,20 +324,20 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 		for _, item := range routeNeedDel {
-			if err = c.ovnClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
+			if err = c.ovnLegacyClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
 				klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
 				return err
 			}
 		}
 
 		for _, item := range routeNeedAdd {
-			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
+			if err = c.ovnClient.AddLogicalRouterStaticRoute(vpc.Name, convertPolicy(item.Policy), item.CIDR, item.NextHopIP); err != nil {
 				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
 		}
 		// handle policy route
-		existPolicyRoute, err := c.ovnClient.GetPolicyRouteList(vpc.Name)
+		existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
@@ -349,13 +349,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 		for _, item := range policyRouteNeedDel {
-			if err = c.ovnClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+			if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
 				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
 				return err
 			}
 		}
 		for _, item := range policyRouteNeedAdd {
-			if err = c.ovnClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP); err != nil {
+			if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP); err != nil {
 				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
@@ -376,7 +376,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
 	} else {
 		lbs := []string{vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer}
-		if err = c.ovnClient.DeleteLoadBalancer(lbs...); err != nil {
+		if err = c.ovnLegacyClient.DeleteLoadBalancer(lbs...); err != nil {
 			return err
 		}
 		vpc.Status.TcpLoadBalancer = ""
@@ -440,14 +440,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 			if value == "true" {
 				// add lb to ls
-				if err := c.ovnClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
 					c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 					return err
 				}
 				needUpdateSvc = true
 			} else if value == "false" {
 				// remove lb from ls
-				if err := c.ovnClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
 					c.patchSubnetStatus(subnet, "RemoveLbFromLogicalSwitchFailed", err.Error())
 					return err
 				}
@@ -467,11 +467,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 	if c.config.EnableMcast {
-		if err = c.ovnClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
+		if err = c.ovnLegacyClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
 			klog.Errorf("failed to set lr '%s' multicast mode", vpc.Name, err)
 		}
 	} else {
-		if err = c.ovnClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
+		if err = c.ovnLegacyClient.SetLogicalRouterMulticast(vpc.Name); err != nil {
 			klog.Errorf("failed to unset lr '%s' multicast mode", vpc.Name, err)
 		}
 	}
@@ -751,7 +751,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string) error {
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
+	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
 	if err != nil {
 		return err
 	}
@@ -760,19 +760,19 @@ func (c *Controller) createVpcRouter(lr string) error {
 			return nil
 		}
 	}
-	return c.ovnClient.CreateLogicalRouter(lr)
+	return c.ovnLegacyClient.CreateLogicalRouter(lr)
 }
 
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
-	return c.ovnClient.DeleteLogicalRouter(lr)
+	return c.ovnLegacyClient.DeleteLogicalRouter(lr)
 }
 
 func (c *Controller) createDnsAndSetToLogicalSwitch(vpc *kubeovnv1.Vpc) error {
 	// create dns if uuid not found
 	dnsUuidStr, ok := vpc.Annotations[util.DnsUuidAnnotation]
 	if !ok || dnsUuidStr == "" {
-		dnsUuid, err := c.ovnClient.CreateDns(vpc.Name)
+		dnsUuid, err := c.ovnLegacyClient.CreateDns(vpc.Name)
 		if err != nil {
 			klog.Errorf("failed to create dns for vpc %s, %v", vpc.Name, err)
 			return err
@@ -799,7 +799,7 @@ func (c *Controller) createDnsAndSetToLogicalSwitch(vpc *kubeovnv1.Vpc) error {
 			}
 			return err
 		}
-		if err := c.ovnClient.SetDnsRecordsToLogicalSwitch(subnetName, dnsUuidStr); err != nil {
+		if err := c.ovnLegacyClient.SetDnsRecordsToLogicalSwitch(subnetName, dnsUuidStr); err != nil {
 			klog.Errorf("failed to set dns_records %v to logical_switch %v, %v", dnsUuidStr, subnetName, err)
 			return err
 		}
@@ -809,13 +809,13 @@ func (c *Controller) createDnsAndSetToLogicalSwitch(vpc *kubeovnv1.Vpc) error {
 }
 
 func (c *Controller) destroyVpcDns(vpc *kubeovnv1.Vpc) error {
-	uuid, err := c.ovnClient.FindDns(vpc.Name)
+	uuid, err := c.ovnLegacyClient.FindDns(vpc.Name)
 	if err != nil {
 		return err
 	}
 	if uuid != "" {
 		// destroy dns
-		if err := c.ovnClient.DestroyDns(uuid); err != nil {
+		if err := c.ovnLegacyClient.DestroyDns(uuid); err != nil {
 			klog.Errorf("failed to destroy dns %s, %v", uuid, err)
 			return err
 		}
@@ -874,7 +874,7 @@ func (c *Controller) protectLoadBalancer() error {
 
 			// check load_balancer
 			for _, subnetName := range vpc.Status.Subnets {
-				err = c.ovnClient.CheckAndAddLbToLogicalSwitch(
+				err = c.ovnLegacyClient.CheckAndAddLbToLogicalSwitch(
 					vpc.Status.TcpLoadBalancer,
 					vpc.Status.TcpSessionLoadBalancer,
 					vpc.Status.UdpLoadBalancer,

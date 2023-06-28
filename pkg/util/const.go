@@ -127,6 +127,8 @@ const (
 	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 
+	DefaultSecurityGroupName = "default-securitygroup"
+
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 

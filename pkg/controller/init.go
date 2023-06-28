@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
-	v1 "k8s.io/api/core/v1"
+	"github.com/scylladb/go-set/strset"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -165,13 +167,13 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
+	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		return err
 	}
 	klog.Infof("exists routers: %v", lrs)
 	for _, r := range lrs {
-		if c.config.ClusterRouter == r {
+		if c.config.ClusterRouter == r.Name {
 			return nil
 		}
 	}
@@ -179,6 +181,7 @@ func (c *Controller) initClusterRouter() error {
 }
 
 func (c *Controller) InitIPAM() error {
+	start := time.Now()
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnet: %v", err)
@@ -187,6 +190,32 @@ func (c *Controller) InitIPAM() error {
 	for _, subnet := range subnets {
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
+		}
+	}
+
+	lsList, err := c.ovnClient.ListLogicalSwitch(false, nil)
+	if err != nil {
+		klog.Errorf("failed to list LS: %v", err)
+		return err
+	}
+	lsPortsMap := make(map[string]*strset.Set, len(lsList))
+	for _, ls := range lsList {
+		lsPortsMap[ls.Name] = strset.New(ls.Ports...)
+	}
+
+	lspList, err := c.ovnClient.ListLogicalSwitchPortsWithLegacyExternalIDs()
+	if err != nil {
+		klog.Errorf("failed to list LSP: %v", err)
+		return err
+	}
+	lspWithoutVendor := strset.NewWithSize(len(lspList))
+	lspWithoutLS := make(map[string]string, len(lspList))
+	for _, lsp := range lspList {
+		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] == "" {
+			lspWithoutVendor.Add(lsp.Name)
+		}
+		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[logicalSwitchKey] == "" {
+			lspWithoutLS[lsp.Name] = lsp.UUID
 		}
 	}
 
@@ -211,9 +240,27 @@ func (c *Controller) InitIPAM() error {
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
 				}
-			}
-			if err = c.initAppendPodExternalIds(pod); err != nil {
-				klog.Errorf("failed to init append pod %s.%s externalIds: %v", pod.Name, pod.Namespace, err)
+				if podNet.ProviderName == util.OvnProvider || strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
+					portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+					externalIDs := make(map[string]string, 3)
+					if lspWithoutVendor.Has(portName) {
+						externalIDs["vendor"] = util.CniTypeName
+						externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+					}
+					if uuid := lspWithoutLS[portName]; uuid != "" {
+						for ls, ports := range lsPortsMap {
+							if ports.Has(uuid) {
+								externalIDs[logicalSwitchKey] = ls
+								break
+							}
+						}
+					}
+
+					if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
+						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+					}
+				}
+
 			}
 		}
 	}
@@ -272,12 +319,25 @@ func (c *Controller) InitIPAM() error {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 
-			if err = c.initAppendNodeExternalIds(portName, node.Name); err != nil {
-				klog.Errorf("failed to init append node %s externalIds: %v", node.Name, err)
+			externalIDs := make(map[string]string, 2)
+			if lspWithoutVendor.Has(portName) {
+				externalIDs["vendor"] = util.CniTypeName
+			}
+			if uuid := lspWithoutLS[portName]; uuid != "" {
+				for ls, ports := range lsPortsMap {
+					if ports.Has(uuid) {
+						externalIDs[logicalSwitchKey] = ls
+						break
+					}
+				}
+			}
+
+			if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
+				klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
 			}
 		}
 	}
-
+	klog.Infof("take %.2f seconds to initialize IPAM", time.Since(start).Seconds())
 	return nil
 }
 
@@ -426,19 +486,23 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []string) error {
-	if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+	if err := c.ovnClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, nil, ip, ""); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)
-	if err := c.ovnClient.CreateAddressSetWithAddresses(asName, cidrs...); err != nil {
+	if err := c.ovnClient.CreateAddressSet(asName, nil); err != nil {
 		klog.Errorf("failed to create address set %s for node %s: %v", asName, node, err)
+		return err
+	}
+	if err := c.ovnClient.AddressSetUpdateAddress(asName, cidrs...); err != nil {
+		klog.Errorf("set ips to address set %s: %v", asName, err)
 		return err
 	}
 
 	match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	if err := c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop); err != nil {
+	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, nil); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
@@ -491,53 +555,9 @@ func (c *Controller) initNodeRoutes() error {
 	return nil
 }
 
-func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
-	if !isPodAlive(pod) {
-		return nil
-	}
-
-	podNets, err := c.getPodKubeovnNets(pod)
-	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
-		return err
-	}
-
-	for _, podNet := range podNets {
-		if !strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
-			continue
-		}
-		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
-		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-		if err != nil {
-			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-			return err
-		}
-		if strings.Contains(externalIds, "pod") || strings.Contains(externalIds, "vendor") {
-			continue
-		}
-
-		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, pod.Name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-		if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
-			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error {
-	externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-	if err != nil {
-		klog.Errorf("failed to get lsp external_ids for node %s, %v", nodeName, err)
-		return err
-	}
-	if strings.Contains(externalIds, "vendor") {
-		return nil
-	}
-
-	ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-	if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
-		klog.Errorf("failed to set lsp external_ids for node %s, %v", nodeName, err)
+func (c *Controller) initAppendLspExternalIds(portName string, externalIDs map[string]string) error {
+	if err := c.ovnClient.SetLogicalSwitchPortExternalIds(portName, externalIDs); err != nil {
+		klog.Errorf("set lsp external_ids for logical switch port %s: %v", portName, err)
 		return err
 	}
 	return nil
@@ -597,13 +617,13 @@ func (c *Controller) initNodeChassis() error {
 	for _, node := range nodes {
 		chassisName := node.Annotations[util.ChassisAnnotation]
 		if chassisName != "" {
-			exist, err := c.ovnClient.ChassisExist(chassisName)
+			exist, err := c.ovnLegacyClient.ChassisExist(chassisName)
 			if err != nil {
 				klog.Errorf("failed to check chassis exist: %v", err)
 				return err
 			}
 			if exist {
-				err = c.ovnClient.InitChassisNodeTag(chassisName, node.Name)
+				err = c.ovnLegacyClient.InitChassisNodeTag(chassisName, node.Name)
 				if err != nil {
 					klog.Errorf("failed to set chassis nodeTag: %v", err)
 					return err

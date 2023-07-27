@@ -94,6 +94,9 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		klog.Errorf("failed to get pod nets %v", err)
 		return
 	}
+
+	c.checkAndAddIPAddressChange(key, p, isStateful, podNets)
+
 	// In case update event might lost during leader election
 	if p.Annotations != nil &&
 		p.Annotations[util.AllocatedAnnotation] == "true" &&
@@ -110,8 +113,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		}
 		return
 	}
-
-	c.checkAndAddIPAddressChange(key, p, isStateful, podNets)
 
 	if p.Annotations != nil && p.Annotations[util.AllocatedAnnotation] == "true" {
 		return
@@ -789,13 +790,14 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
+	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	klog.Infof("update pod %s/%s ip address", namespace, name)
 
@@ -997,13 +999,14 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
+	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	klog.Infof("update pod %s/%s security", namespace, name)
 

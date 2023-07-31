@@ -268,15 +268,6 @@ kind-clean-cluster:
 uninstall:
 	bash dist/images/cleanup.sh
 
-.PHONY: lint
-lint:
-	@gofmt -d .
-	@if [ $$(gofmt -l . | wc -l) -ne 0 ]; then \
-		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
-	fi
-	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204,G601 ./...
-
 .PHONY: scan
 scan:
 	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)

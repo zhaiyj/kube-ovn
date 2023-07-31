@@ -17,7 +17,7 @@ func newLogicalRouterPolicy(priority int, match, action string, nextHops []strin
 		Priority:    priority,
 		Match:       match,
 		Action:      action,
-		Nexthops:    nextHops,
+		Nexthop:     &nextHops[0],
 		ExternalIDs: externalIDs,
 	}
 }
@@ -36,7 +36,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops[0], nil)
 	require.NoError(t, err)
 
 	lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -46,7 +46,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	require.NoError(t, err)
 	require.Contains(t, lr.Policies, policy.UUID)
 
-	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops[0], nil)
 	require.NoError(t, err)
 }
 
@@ -68,7 +68,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicies() {
 	t.Run("add policies to logical router", func(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
-			policy := ovnClient.newLogicalRouterPolicy(priority, match, action, nil, nil)
+			policy := ovnClient.newLogicalRouterPolicy(priority, match, action, "", nil)
 			policies = append(policies, policy)
 		}
 
@@ -103,7 +103,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops[0], nil)
 	require.NoError(t, err)
 
 	t.Run("no err when delete existent logical switch port", func(t *testing.T) {
@@ -149,7 +149,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 	prepare := func() {
 		for i := 0; i < 3; i++ {
 			priority := basePriority + i
-			err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, externalIDs)
+			err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops[0], externalIDs)
 			require.NoError(t, err)
 		}
 
@@ -210,7 +210,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterPolicy() {
 
 	for i := 0; i < 3; i++ {
 		priority := basePriority + i
-		err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+		err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops[0], nil)
 		require.NoError(t, err)
 	}
 
@@ -250,7 +250,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, ovnnb.LogicalRouterPolicyActionAllow, nil, nil)
+	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, ovnnb.LogicalRouterPolicyActionAllow, "", nil)
 	require.NoError(t, err)
 
 	t.Run("priority and match are same", func(t *testing.T) {
@@ -305,11 +305,11 @@ func (suite *OvnClientTestSuite) test_newLogicalRouterPolicy() {
 		Priority:    priority,
 		Match:       match,
 		Action:      action,
-		Nexthops:    nextHops,
+		Nexthop:     &nextHops[0],
 		ExternalIDs: map[string]string{"key": "value"},
 	}
 
-	policy := ovnClient.newLogicalRouterPolicy(priority, match, action, nextHops, map[string]string{"key": "value"})
+	policy := ovnClient.newLogicalRouterPolicy(priority, match, action, nextHops[0], map[string]string{"key": "value"})
 	expect.UUID = policy.UUID
 	require.Equal(t, expect, policy)
 }

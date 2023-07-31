@@ -49,9 +49,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Run("create logical switch port", func(t *testing.T) {
 		lspName := "test-create-port-lsp"
 		sgs := "sg,sg1"
-		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, false, true, dhcpOptions)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -62,8 +61,9 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
-			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"vips":        vips,
+			"ip":                strings.ReplaceAll(ips, ",", "/"),
+			//"associated_sg_" + util.DefaultSecurityGroupName: "false",
+			"vips":        strings.ReplaceAll(vips, ",", "/"),
 			"attach-vips": "true",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
@@ -76,9 +76,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Run("create logical switch port without vips", func(t *testing.T) {
 		lspName := "test-create-port-lsp-no-vip"
 		sgs := "sg,sg1"
-		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, "", true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, "", false, true, dhcpOptions)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -89,7 +88,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
-			"associated_sg_" + util.DefaultSecurityGroupName: "false",
+			"ip":                strings.ReplaceAll(ips, ",", "/"),
+			//"associated_sg_" + util.DefaultSecurityGroupName: "false",
 			"pod":    fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":     lsName,
 			"vendor": util.CniTypeName,
@@ -100,10 +100,9 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 	t.Run("create logical switch port with default-securitygroup", func(t *testing.T) {
 		lspName := "test-create-port-lsp-default-securitygroup"
-		sgs := "sg,sg1,default-securitygroup"
-		vpcName := "test-vpc"
+		sgs := "sg,sg1"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, false, true, dhcpOptions)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -114,11 +113,12 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
-			"associated_sg_" + util.DefaultSecurityGroupName: "true",
+			"ip":                strings.ReplaceAll(ips, ",", "/"),
+			//"associated_sg_" + util.DefaultSecurityGroupName: "true",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
 			"vendor":      util.CniTypeName,
-			"vips":        vips,
+			"vips":        strings.ReplaceAll(vips, ",", "/"),
 			"attach-vips": "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
@@ -128,9 +128,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Run("create logical switch port with default vpc", func(t *testing.T) {
 		lspName := "test-create-port-lsp-default-vpc"
 		sgs := "sg,sg1"
-		vpcName := "ovn-cluster"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, false, true, dhcpOptions)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -141,10 +140,11 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
+			"ip":                strings.ReplaceAll(ips, ",", "/"),
 			"pod":               fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":                lsName,
 			"vendor":            util.CniTypeName,
-			"vips":              vips,
+			"vips":              strings.ReplaceAll(vips, ",", "/"),
 			"attach-vips":       "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
@@ -154,21 +154,24 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Run("create logical switch port with portSecurity=false", func(t *testing.T) {
 		lspName := "test-create-port-lsp-no-portSecurity"
 		sgs := "sg,sg1"
-		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, false, sgs, vips, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, false, sgs, vips, false, true, dhcpOptions)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
-			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
-			"ls":          lsName,
-			"vendor":      util.CniTypeName,
-			"vips":        vips,
-			"attach-vips": "true",
+			"ip": strings.ReplaceAll(ips, ",", "/"),
+			//"associated_sg_" + util.DefaultSecurityGroupName: "false",
+			"pod":               fmt.Sprintf("%s/%s", podNamespace, podName),
+			"ls":                lsName,
+			"vendor":            util.CniTypeName,
+			"vips":              strings.ReplaceAll(vips, ",", "/"),
+			"attach-vips":       "true",
+			"security_groups":   strings.ReplaceAll(sgs, ",", "/"),
+			"associated_sg_sg":  "true",
+			"associated_sg_sg1": "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
 		require.Equal(t, dhcpOptions.DHCPv6OptionsUUID, *lsp.Dhcpv6Options)
@@ -177,9 +180,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Run("create logical switch port without dhcp options", func(t *testing.T) {
 		lspName := "test-create-port-lsp-no-dhcp-options"
 		sgs := "sg,sg1"
-		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, false, true, nil)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -190,8 +192,9 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
-			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"vips":        vips,
+			"ip":                strings.ReplaceAll(ips, ",", "/"),
+			//"associated_sg_" + util.DefaultSecurityGroupName: "false",
+			"vips":        strings.ReplaceAll(vips, ",", "/"),
 			"attach-vips": "true",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
@@ -354,13 +357,13 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
 	podNamespace := "test-ns"
-	vpcName := "test-vpc"
+
 	lspName := "test-update-port-arp-proxy-lsp"
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
 	t.Run("create logical switch port", func(t *testing.T) {
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, lspName, podNamespace, true, "", "", false, nil, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, lspName, podNamespace, true, "", "", false, false, nil)
 		require.NoError(t, err)
 	})
 

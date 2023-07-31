@@ -288,18 +288,6 @@ func (suite *OvnClientTestSuite) Test_logicalRouterPortFilter() {
 	suite.testlogicalRouterPortFilter()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateBFD() {
-	suite.testCreateBFD()
-}
-
-func (suite *OvnClientTestSuite) Test_ListBFD() {
-	suite.testListBFD()
-}
-
-func (suite *OvnClientTestSuite) Test_DeleteBFD() {
-	suite.testDeleteBFD()
-}
-
 /* gateway_chassis unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
@@ -348,10 +336,6 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
-}
-
-func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
-	suite.testSetLoadBalancerAffinityTimeout()
 }
 
 /* port_group unit test */
@@ -738,7 +722,6 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
-		client.WithTable(&ovnnb.BFD{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),

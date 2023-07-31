@@ -226,9 +226,6 @@ func (suite *OvnClientTestSuite) testCreateGatewayAcl() {
 		require.NoError(t, err)
 		expect := newAcl(name, direction, priority, match, ovnnb.ACLActionAllowRelated)
 		expect.UUID = acl.UUID
-		if len(options) != 0 {
-			expect.Options = options
-		}
 		require.Equal(t, expect, acl)
 		require.Contains(t, acls, acl.UUID)
 
@@ -364,9 +361,6 @@ func (suite *OvnClientTestSuite) testCreateNodeAcl() {
 		require.NoError(t, err)
 		expect := newAcl(pg.Name, direction, priority, match, ovnnb.ACLActionAllowRelated)
 		expect.UUID = acl.UUID
-		if len(options) != 0 {
-			expect.Options = options
-		}
 		require.Equal(t, expect, acl)
 		require.Contains(t, pg.ACLs, acl.UUID)
 	}

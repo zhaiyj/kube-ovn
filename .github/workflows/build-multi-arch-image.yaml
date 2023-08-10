@@ -14,6 +14,7 @@ env:
   DOCKER_REPO: etcdnecx
 
 jobs:
+<<<<<<< HEAD
   go-sec:
     name: gosec
     runs-on: ubuntu-22.04
@@ -35,6 +36,8 @@ jobs:
           go install github.com/securego/gosec/cmd/gosec@latest
           make lint
 
+=======
+>>>>>>> 939844f2 (流水线优化)
   build-x86:
     name: Build x86
     runs-on: ubuntu-22.04

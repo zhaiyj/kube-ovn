@@ -1,11 +1,8 @@
-GO_VERSION = 1.16
+GO_VERSION = 1.17
 
-REGISTRY = kubeovn
+REGISTRY = kube-ovn
 DEV_TAG = dev
-RELEASE_TAG = $(shell cat VERSION)
-COMMIT = git-$(shell git rev-parse --short HEAD)
-DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
-GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)"
+RELEASE_TAG = $(or $(TAG), release)
 
 # ARCH could be amd64,arm64
 ARCH = amd64
@@ -13,11 +10,11 @@ ARCH = amd64
 .PHONY: build-go
 build-go:
 	go mod tidy
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -v ./cmd
 
 .PHONY: build-go-arm
 build-go-arm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -v ./cmd
 
 .PHONY: build-bin
 build-bin:
@@ -48,12 +45,10 @@ base-arm64:
 .PHONY: release
 release: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
-	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 .PHONY: release-arm
 release-arm: build-go-arm
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
-	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 .PHONY: push-dev
 push-dev:
@@ -66,7 +61,6 @@ push-release: release
 .PHONY: tar
 tar:
 	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o kube-ovn.tar
-	docker save $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o vpc-nat-gateway.tar
 
 .PHONY: base-tar-amd64
 base-tar-amd64:
@@ -268,10 +262,18 @@ kind-clean-cluster:
 uninstall:
 	bash dist/images/cleanup.sh
 
+.PHONY: lint
+lint:
+	@gofmt -d .
+	@if [ $$(gofmt -l . | wc -l) -ne 0 ]; then \
+		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
+	fi
+	@GOOS=linux go vet ./...
+	@GOOS=linux gosec -exclude=G204,G601 ./...
+
 .PHONY: scan
 scan:
 	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/vpc-nat-gateway:$(RELEASE_TAG)
 
 .PHONY: ut
 ut:
@@ -333,6 +335,6 @@ clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
-	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
+	$(RM) kube-ovn.tar image-amd64.tar image-arm64.tar
 	$(RM) test/e2e/ovnnb_db.* test/e2e/ovnsb_db.*
 	$(RM) install-underlay.sh

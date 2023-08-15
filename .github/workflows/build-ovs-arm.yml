@@ -58,5 +58,5 @@ jobs:
           TAG=$(echo ${TAG} | sed 's/ecx-//g')
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker images
-          docker tag kube-ovn/kube-ovn:base-ovs-arm-arm64  $DOCKER_REPO/kube-ovn:base-ovs-arm
-          docker push $DOCKER_REPO/kube-ovn:base-arm-ovs
+          docker tag kube-ovn/ovs-base:base-ovs-arm-arm64  $DOCKER_REPO/ovs-base:base-ovs-arm
+          docker push $DOCKER_REPO/ovs-base:base-ovs-arm

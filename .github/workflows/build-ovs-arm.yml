@@ -23,7 +23,7 @@ jobs:
       - name: Build
         run: |
           TAG=base-ovs-arm make  base-ovs-arm64
-          make  base-tar-ovs-arm64
+          TAG=base-ovs-arm make  base-tar-ovs-arm64
           
       - name: Upload image to artifact
         uses: actions/upload-artifact@v3
@@ -58,5 +58,5 @@ jobs:
           TAG=$(echo ${TAG} | sed 's/ecx-//g')
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker images
-          docker tag kube-ovn/kube-ovn:base-ovs-arm $DOCKER_REPO/kube-ovn:base-ovs-arm
+          docker tag kube-ovn/kube-ovn:base-ovs-arm-arm64  $DOCKER_REPO/kube-ovn:base-ovs-arm
           docker push $DOCKER_REPO/kube-ovn:base-arm-ovs

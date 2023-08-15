@@ -42,6 +42,10 @@ base-amd64:
 base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
+.PHONY: base-ovs-arm64
+base-ovs-arm64:
+	 docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/ovs-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile-ovs-arm.base  dist/images/
+
 .PHONY: release
 release: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
@@ -69,6 +73,10 @@ base-tar-amd64:
 .PHONY: base-tar-arm64
 base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
+
+.PHONY: base-tar-ovs-arm64
+base-tar-ovs-arm64:
+	docker save $(REGISTRY)/ovs-base:$(RELEASE_TAG)-arm64 -o image-ovs-arm64.tar
 
 .PHONY: kind-init
 kind-init:

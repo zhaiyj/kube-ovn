@@ -1,0 +1,56 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:22.04 as ovs-builder
+
+ARG ARCH
+ARG DEBIAN_FRONTEND=noninteractive
+ENV SRC_DIR='/usr/src'
+
+RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
+    python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
+    python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
+    flake8 python3-sphinx graphviz groff wget libjemalloc-dev -y
+
+RUN cd /usr/src/ && \
+    git clone -b branch-2.17 --depth=1 https://github.com/zhaiyj/ovs.git && \
+    cd ovs && \
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
+    ./boot.sh && \
+    rm -rf .git && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \    
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary    
+
+RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
+
+
+RUN mkdir /packages/ && \
+     cp /usr/src/libopenvswitch*.deb /packages && \
+     cp /usr/src/openvswitch-*.deb /packages && \
+     cp /usr/src/python3-openvswitch*.deb /packages && \
+     cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
+
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
+        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
+        logrotate libjemalloc2 dnsutils -y --no-install-recommends && \
+        rm -rf /var/lib/apt/lists/* && \
+        cd /usr/sbin && \
+        ln -sf /usr/sbin/iptables-legacy iptables && \
+        ln -sf /usr/sbin/ip6tables-legacy ip6tables && \
+        rm -rf /etc/localtime
+
+RUN mkdir -p /var/run/openvswitch && \
+    mkdir -p /var/run/ovn && \
+    mkdir -p /etc/cni/net.d && \
+    mkdir -p /kube-ovn && \
+    mkdir -p /opt/cni/bin
+
+COPY *.sh /kube-ovn/
+
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    dpkg -i /packages/libopenvswitch*.deb && \
+    dpkg -i /packages/openvswitch-*.deb && \
+    dpkg -i /packages/python3-openvswitch*.deb 

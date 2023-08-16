@@ -47,7 +47,7 @@ base-ovs-arm64:
 	 docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/ovs-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile-ovs-arm.base  dist/images/
 
 .PHONY: release
-release: lint build-go
+release: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: release-arm

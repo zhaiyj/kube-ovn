@@ -559,7 +559,7 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 	}
 
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.StrategicMergePatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.

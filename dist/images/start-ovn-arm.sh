@@ -17,4 +17,9 @@ function quit {
 
 trap quit EXIT
 
+if ! (pgrep -f "ovn-monitor" > /dev/null);then
+  /bin/bash  /kube-ovn/ovn-monitor.sh &
+fi
+
+
 tail -f /var/log/ovn/ovn-controller.log

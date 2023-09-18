@@ -166,5 +166,9 @@ ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 sleep ${FLOW_WAIT}
 ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
 
+if ! (pgrep -f "ovs-monitor" > /dev/null);then
+  /bin/bash /kube-ovn/ovs-monitor.sh &
+fi
+
 chmod 600 /etc/openvswitch/*
 tail -f   /var/log/openvswitch/ovs-vswitchd.log

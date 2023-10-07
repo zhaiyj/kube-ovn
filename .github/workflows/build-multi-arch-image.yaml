@@ -182,19 +182,25 @@ jobs:
           # push to dev hub 
           docker tag $DOCKER_REPO/kube-ovn:$TAG-x86 $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-x86
           docker tag $DOCKER_REPO/kube-ovn:$TAG-arm $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
+
+          docker push $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-x86
+          docker push $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
           
           docker manifest rm $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG || true
           docker manifest create $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-x86 $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
           docker manifest push $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG
-          docker manifest rm $DEV_REGISTRY/ecf-edge/ecf-edge/kube-ovn:$TAG || true
+          docker manifest rm $DEV_REGISTRY/ecf-edge/kube-ovn:$TAG || true
           
           # push to tag hub 
           if echo "$REF" | grep -q "refs/tag"; then
             docker tag $DOCKER_REPO/kube-ovn:$TAG-x86 $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-x86
             docker tag $DOCKER_REPO/kube-ovn:$TAG-arm $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
-          
+            
+            docker push $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-x86
+            docker push $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
+            
             docker manifest rm $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG || true
             docker manifest create $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-x86 $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG-arm
             docker manifest push $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG
-            docker manifest rm $TAG_REGISTRY/ecf-edge/ecf-edge/kube-ovn:$TAG || true
+            docker manifest rm $TAG_REGISTRY/ecf-edge/kube-ovn:$TAG || true
           fi

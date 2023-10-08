@@ -16,6 +16,7 @@ env:
 jobs:
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> d2a37577 (make lint 独立一个 job 执行)
   go-sec:
@@ -44,6 +45,8 @@ jobs:
 >>>>>>> 939844f2 (流水线优化)
 =======
 >>>>>>> d2a37577 (make lint 独立一个 job 执行)
+=======
+>>>>>>> 08e16918 (分离流水线的代码扫描到另外一个工作流)
   build-x86:
     name: Build x86
     runs-on: ubuntu-22.04

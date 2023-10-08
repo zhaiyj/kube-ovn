@@ -1,0 +1,37 @@
+name: Code Scan
+on:
+  push:
+    branches:
+      - ecx-*
+    tags:
+      - ecx-*
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+env:
+  GO_VERSION: "1.19"
+  GOSEC_VERSION: "2.13.1"
+  DOCKER_REPO: etcdnecx
+
+jobs:
+  go-sec:
+    name: gosec
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
+      - uses: actions/setup-go@v3
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: |
+          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: make lint
+        run: |
+          go install github.com/securego/gosec/cmd/gosec@latest
+          make lint
+

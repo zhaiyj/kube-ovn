@@ -1,9 +1,9 @@
 #!/bin/bash
-vswitchd="ovs-vswitchd"
-ovsdb="ovsdb-server"
+vswitchd=$(ps -ef |grep ovs-vswitchd |grep openvswitch |awk {'print $2'})
+ovsdb=$(ps -ef |grep ovsdb-server |grep openvswitch |awk {'print $2'})
 #使用pgrep查找进程
-while true;do
-    if ((pgrep -x "$vswitchd" > /dev/null) && (pgrep -x "$ovsdb" > /dev/null));then
+while true;do 
+    if [ -n "$vswitchd" ] && [ -n "$ovsdb" ];then
         sleep 1
     else
         echo "$vswitchd and $ovsdb is not running. Starting it..." >> /tmp/output.txt

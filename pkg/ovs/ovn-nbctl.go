@@ -1485,6 +1485,9 @@ func (c LegacyClient) DeleteLoadBalancerVip(vip, lb string) error {
 		klog.Errorf("failed to get lb: %v", err)
 		return err
 	}
+	if lbUuid == "" {
+		return nil
+	}
 
 	existVips, err := c.GetLoadBalancerVips(lbUuid)
 	if err != nil {

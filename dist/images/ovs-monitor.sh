@@ -1,10 +1,9 @@
 #!/bin/bash
-vswitchd=$(ps -ef |grep ovs-vswitchd |grep openvswitch |awk {'print $2'})
-ovsdb=$(ps -ef |grep ovsdb-server |grep openvswitch |awk {'print $2'})
-#使用pgrep查找进程
 while true;do 
+    vswitchd=$(ps -ef |grep openvswitch|grep ovs-vswitchd.pid |awk {'print $2'})
+    ovsdb=$(ps -ef |grep ovsdb-server |grep openvswitch |awk {'print $2'})
     if [ -n "$vswitchd" ] && [ -n "$ovsdb" ];then
-        sleep 1
+        sleep 2
     else
         echo "$vswitchd and $ovsdb is not running. Starting it..." >> /tmp/output.txt
         log_pid=$(ps -ef |grep ovs-vswitchd.log |grep tail |awk {'print $2'})

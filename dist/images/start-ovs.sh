@@ -34,9 +34,8 @@ cat /proc/cmdline"
 fi
 
 function quit {
-	/usr/share/ovn/scripts/grace_stop_ovn_controller
-	/usr/share/openvswitch/scripts/ovs-ctl stop
-	exit 0
+    /usr/share/openvswitch/scripts/ovs-ctl stop
+    exit 0
 }
 trap quit EXIT
 
@@ -51,13 +50,13 @@ if [[ `nproc` -gt 12 ]]; then
     ovs-vsctl --no-wait set Open_vSwitch . other_config:n-handler-threads=10
 fi
 
+
 if [ "$HW_OFFLOAD" = "true" ]; then
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=true
 else
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
 
-# Start vswitchd
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
@@ -78,6 +77,7 @@ function gen_conn_str {
   fi
   echo "$x"
 }
+
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
@@ -85,11 +85,9 @@ ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 
-# Start ovn-controller
-if [[ "$ENABLE_SSL" == "false" ]]; then
-  /usr/share/ovn/scripts/ovn-ctl restart_controller
-else
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
+if ! (pgrep -f "ovs-monitor" > /dev/null);then
+  /bin/bash /kube-ovn/ovs-monitor.sh &
 fi
+
 chmod 600 /etc/openvswitch/*
-tail -f /var/log/ovn/ovn-controller.log
+tail -f   /var/log/openvswitch/ovs-vswitchd.log

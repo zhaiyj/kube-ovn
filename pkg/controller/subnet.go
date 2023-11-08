@@ -473,6 +473,75 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, 
 	}
 }
 
+func (c *Controller) handleAddOrUpdateNoneCIDRSubnet(subnet *kubeovnv1.Subnet) error {
+
+	// format
+	var err error
+	changed := false
+
+	if subnet.Spec.Provider == "" {
+		subnet.Spec.Provider = util.OvnProvider
+		changed = true
+	}
+	if subnet.Spec.Protocol != "" {
+		subnet.Spec.Protocol = ""
+		changed = true
+	}
+	if subnet.Spec.Vpc != "" ||
+		len(subnet.Spec.ExcludeIps) != 0 ||
+		subnet.Spec.Gateway != "" ||
+		subnet.Spec.EnableDHCP == true ||
+		subnet.Spec.EnableIPv6RA == true ||
+		subnet.Spec.DisableGatewayCheck != true {
+
+		subnet.Spec.Vpc = ""
+		subnet.Spec.Gateway = ""
+		subnet.Spec.ExcludeIps = nil
+		subnet.Spec.EnableDHCP = false
+		subnet.Spec.EnableIPv6RA = false
+		subnet.Spec.DisableGatewayCheck = true
+
+		changed = true
+	}
+	if subnet.Spec.Vlan != "" {
+		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+			klog.Warningf("subnet %s reference a none exist vlan %s", subnet.Name, subnet.Spec.Vlan)
+			subnet.Spec.Vlan = ""
+		}
+	}
+	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
+	if changed {
+		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
+			return err
+		}
+	}
+
+	exist, err := c.ovnLegacyClient.LogicalSwitchExists(subnet.Name, c.config.EnableExternalVpc)
+	if err != nil {
+		klog.Errorf("failed to list logical switch, %v", err)
+		c.patchSubnetStatus(subnet, "ListLogicalSwitchFailed", err.Error())
+		return err
+	}
+
+	if !exist {
+		subnet.Status.EnsureStandardConditions()
+		// If multiple namespace use same ls name, only first one will success
+		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, "", "", "", false); err != nil {
+			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
+			return err
+		}
+	}
+
+	if err := c.reconcileSubnet(subnet); err != nil {
+		klog.Errorf("reconcile subnet for %s failed, %v", subnet.Name, err)
+		return err
+	}
+
+	return nil
+}
+
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	var err error
 	subnet, err := c.subnetsLister.Get(key)
@@ -500,6 +569,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 	subnet = orisubnet.DeepCopy()
+
+	if subnet.Spec.CIDRBlock == util.CIDRNone {
+		return c.handleAddOrUpdateNoneCIDRSubnet(subnet)
+	}
 
 	if err := formatSubnet(subnet, c); err != nil {
 		return err

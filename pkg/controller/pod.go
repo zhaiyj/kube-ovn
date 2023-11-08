@@ -562,12 +562,24 @@ func (c *Controller) handleAddPod(key string) error {
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocateSubnets(pod, podNets) {
 		subnet := podNet.Subnet
-		v4IP, v6IP, mac, err := c.acquireAddress(pod, podNet)
-		if err != nil {
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
-			return err
+		var mac, ipStr string
+		var cidrAnnotationValue, gwAnnotationValue string
+		if subnet.Spec.CIDRBlock != util.CIDRNone {
+			var v4IP, v6IP string
+			v4IP, v6IP, mac, err = c.acquireAddress(pod, podNet)
+			if err != nil {
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
+				return err
+			}
+			ipStr = util.GetStringIP(v4IP, v6IP)
+			cidrAnnotationValue = checkoutCidrByIP(ipStr, subnet.Spec.CIDRBlock)
+			gwAnnotationValue = checkoutCidrByIP(ipStr, subnet.Spec.Gateway)
+		} else {
+			ipStr = util.CIDRNone
+			mac = util.GenerateMac()
+			cidrAnnotationValue = subnet.Spec.CIDRBlock
+			gwAnnotationValue = subnet.Spec.Gateway
 		}
-		ipStr := util.GetStringIP(v4IP, v6IP)
 		if subnet.Spec.Vlan != "" {
 			pod.Annotations[fmt.Sprintf(util.NetworkTypeTemplate, podNet.ProviderName)] = util.NetworkTypeVlan
 		} else {
@@ -575,8 +587,8 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = mac
-		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(ipStr, subnet.Spec.CIDRBlock)
-		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = checkoutCidrByIP(ipStr, subnet.Spec.Gateway)
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = cidrAnnotationValue
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = gwAnnotationValue
 		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = subnet.Name
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 		if pod.Annotations[util.PodNicAnnotation] == "" {
@@ -648,7 +660,6 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 		}
 	}
-
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.

@@ -171,4 +171,6 @@ const (
 	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
+
+	CIDRNone = "none"
 )

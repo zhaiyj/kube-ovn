@@ -288,6 +288,7 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 	addresses = append(addresses, strings.Split(ip, ",")...)
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
+	var liveMigrationPortSrc string
 
 	// add external_id info
 	ovnCommand = append(ovnCommand,
@@ -304,12 +305,13 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 		}
 		if len(ports) > 0 {
 			isAddrConflict = true
+			liveMigrationPortSrc = ports[0]
 		}
 	}
 
 	if isAddrConflict {
-		// only set mac, and set flag 'liveMigration'
-		ovnCommand = append(ovnCommand, "--", "lsp-set-addresses", port, mac, "--",
+		// set address unknown, and set flag 'liveMigration'
+		ovnCommand = append(ovnCommand, "--", "lsp-set-addresses", port, "unknown", "--",
 			"set", "logical_switch_port", port, "external_ids:liveMigration=1")
 	} else {
 		// set mac and ip
@@ -364,6 +366,17 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("create port %s failed: %v", port, err)
 		return err
+	}
+
+	if liveMigrationPortSrc != "" {
+		err := c.EnablePortLayer2forward(ls, liveMigrationPortSrc)
+		if err != nil {
+			return err
+		}
+		if err = c.SetPortExternalIds(liveMigrationPortSrc, "liveMigration", "1"); err != nil {
+			klog.Errorf("set port externalIds failed, %v", err)
+			return err
+		}
 	}
 	return nil
 }

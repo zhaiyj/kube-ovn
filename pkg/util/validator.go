@@ -184,6 +184,9 @@ func ValidatePodNetwork(annotations map[string]string) error {
 }
 
 func ValidatePodCidr(cidr, ip string) error {
+	if cidr == CIDRNone {
+		return nil
+	}
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		for _, ipAddr := range strings.Split(ip, ",") {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {

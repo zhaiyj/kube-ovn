@@ -143,6 +143,9 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 }
 
 func CheckProtocol(address string) string {
+	if address == CIDRNone {
+		return kubeovnv1.ProtocolDual
+	}
 	ips := strings.Split(address, ",")
 	if len(ips) == 2 {
 		v4IP := net.ParseIP(strings.Split(ips[0], "/")[0])
@@ -296,6 +299,9 @@ func GetStringIP(v4IP, v6IP string) string {
 }
 
 func GetIpAddrWithMask(ip, cidr string) string {
+	if cidr == CIDRNone {
+		return CIDRNone
+	}
 	var ipAddr string
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
@@ -312,6 +318,9 @@ func GetIpAddrWithMask(ip, cidr string) string {
 }
 
 func GetIpWithoutMask(ipStr string) string {
+	if ipStr == CIDRNone {
+		return CIDRNone
+	}
 	var ips []string
 	for _, ip := range strings.Split(ipStr, ",") {
 		ips = append(ips, strings.Split(ip, "/")[0])

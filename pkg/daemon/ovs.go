@@ -220,7 +220,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 			}
 		}
 
-		if isDefaultRoute {
+		if isDefaultRoute && ipAddr != util.CIDRNone {
 			// Only eth0 requires the default route and gateway
 			switch util.CheckProtocol(ipAddr) {
 			case kubeovnv1.ProtocolIPv4:
@@ -469,6 +469,9 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
+		if ipStr == util.CIDRNone {
+			continue
+		}
 		// Do not reassign same address for link
 		if _, ok := ipDelMap[ipStr]; ok {
 			delete(ipDelMap, ipStr)
@@ -937,6 +940,9 @@ func configureAdditionalNic(link, ip string) error {
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
+		if ipStr == util.CIDRNone {
+			continue
+		}
 		// Do not reassign same address for link
 		if _, ok := ipDelMap[ipStr]; ok {
 			delete(ipDelMap, ipStr)

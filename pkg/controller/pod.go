@@ -547,10 +547,38 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
+	var migrationsSrcPod *v1.Pod
+	vmName := pod.Labels[util.KubeVirtVmLabel]
+	if vmName != "" {
+		podList, err := c.podsLister.Pods(namespace).List(labels.Set{util.KubeVirtVmLabel: vmName}.AsSelector())
+		if err != nil {
+			klog.Errorf("failed to list pod %v", err)
+			return err
+		}
+		for _, tmpPod := range podList {
+			if tmpPod.Name != pod.Name && isPodAlive(tmpPod) {
+				migrationsSrcPod = tmpPod
+				break
+			}
+		}
+	}
+
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
 		return err
+	}
+
+	if migrationsSrcPod != nil {
+		for _, podNet := range needAllocateSubnets(pod, podNets) {
+			if podNet.ProviderName == util.OvnProvider {
+				continue
+			}
+			if exceptIp := migrationsSrcPod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)]; exceptIp != "" {
+				pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = exceptIp
+				pod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)] = exceptIp
+			}
+		}
 	}
 
 	op := "replace"

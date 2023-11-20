@@ -1,20 +1,17 @@
 #!/bin/bash
-while true;do 
-    vswitchd=$(ps -ef |grep openvswitch|grep ovs-vswitchd.pid |awk {'print $2'})
-    if [ $? -ne 0 ]; then 
-        echo "grep vswitchd error \n " >>  /tmp/output.txt
-        sleep 2
-	continue
-    fi
-    ovsdb=$(ps -ef |grep ovsdb-server |grep openvswitch |awk {'print $2'})
-    if [ $? -ne 0 ]; then
-        echo "grep ovsdb-server error \n " >>  /tmp/output.txt
-        sleep 2
-        continue
-    fi
+while true;do
+    ovsdb="" 
+    vswitchd=$(pgrep -x "ovs-vswitchd")
+    vswitchdb=$(pgrep -x "ovsdb-server")
+    for i in $vswitchdb; do
+        ovsdb=$(cat /proc/$i/cmdline|tr -d '\0'|awk '/ovsdb-server.pid/')
+        if [ -n "$ovsdb" ] ; then
+            break
+        fi
+    done     
     
     if [ -n "$vswitchd" ] && [ -n "$ovsdb" ];then
-        sleep 2
+        sleep 15
     else
         echo "$vswitchd and $ovsdb is not running. Starting it..." >> /tmp/output.txt
         log_pid=$(ps -ef |grep ovs-vswitchd.log |grep tail |awk {'print $2'})

@@ -40,6 +40,7 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 	addresses := make([]string, 0, len(ipList)+len(vipList)+1) // +1 is the mac length
 	addresses = append(addresses, mac)
 	addresses = append(addresses, ipList...)
+	liveMigrationPortSrc := ""
 
 	lsp.ExternalIDs["ls"] = lsName
 	lsp.ExternalIDs["ip"] = strings.ReplaceAll(ip, ",", "/")
@@ -52,12 +53,13 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 		}
 		if len(ports) > 0 {
 			isAddrConflict = true
+			liveMigrationPortSrc = ports[0].Name
 		}
 	}
 
 	if isAddrConflict {
-		// only set mac, and set flag 'liveMigration'
-		lsp.Addresses = []string{mac}
+		// set address unknown, and set flag 'liveMigration'
+		lsp.Addresses = []string{"unknown"}
 		lsp.ExternalIDs["liveMigration"] = "1"
 	} else {
 		// set mac and ip
@@ -124,6 +126,12 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 
 		if err = c.Transact("lsp-update", ops); err != nil {
 			return fmt.Errorf("update logical switch port %s: %v", lspName, err)
+		}
+	}
+	if liveMigrationPortSrc != "" {
+		if err = c.SetLogicalSwitchPortExternalIds(liveMigrationPortSrc, map[string]string{"liveMigration": "1"}); err != nil {
+			klog.Errorf("set port externalIds failed, %v", err)
+			return err
 		}
 	}
 	return nil

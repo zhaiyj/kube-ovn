@@ -809,6 +809,9 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			c.syncSgPortsQueue.Add(sg)
 		}
 	}
+	if pod.Labels["kubevirt.io"] == "virt-launcher" {
+		go c.syncVmLiveMigrationPort()
+	}
 	if !keepIpCR {
 		if err = c.deleteAttachmentNetWorkIP(pod); err != nil {
 			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
@@ -1711,8 +1714,8 @@ func (c *Controller) syncVmLiveMigrationPort() {
 		for _, port := range ports {
 			addr, err := c.ipsLister.Get(port.Name)
 			if err != nil {
-				klog.Errorf("get port ip failed, %v", err)
-				return
+				klog.Warningf("get port ip failed, %v", err)
+				continue
 			}
 			// lists pods with the same IP address
 			vmLsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true,
@@ -1728,6 +1731,8 @@ func (c *Controller) syncVmLiveMigrationPort() {
 					klog.Errorf("set port addresses failed, %v", err)
 					return
 				}
+				klog.Infof("update address for vm port %s after live migration", vmLsps[0])
+
 				if err = c.ovnClient.SetLogicalSwitchPortExternalIds(port.Name, map[string]string{"liveMigration": "0"}); err != nil {
 					klog.Errorf("set port externalIds failed, %v", err)
 					return

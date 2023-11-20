@@ -79,7 +79,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
+	if err = configureContainerNic(podName, containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
 		return err
 	}
 	return nil
@@ -165,7 +165,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int) error {
+func configureContainerNic(podName, nicName, ifName string, ipAddr, gateway string, isDefaultRoute bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -197,10 +197,23 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 			if err != nil {
 				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
 			}
-			if value != "0" {
+			if value != "0" && !strings.Contains(podName, "virt-launcher-") {
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
 					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
 				}
+			} else {
+				// disable ipv6 in virt-launcher init container
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "1"); err != nil {
+					return fmt.Errorf("failed to disable ipv6 on all nic: %v", err)
+				}
+				klog.Infof("disable ipv6 for pod %s", podName)
+				var pureV4Ip string
+				for _, ipStr := range strings.Split(ipAddr, ",") {
+					if util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
+						pureV4Ip = ipStr
+					}
+				}
+				ipAddr = pureV4Ip
 			}
 		}
 
@@ -910,7 +923,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	if err != nil {
 		return containerNicName, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
+	if err = configureContainerNic(podName, containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
 		return containerNicName, err
 	}
 	return containerNicName, nil

@@ -369,11 +369,7 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 	}
 
 	if liveMigrationPortSrc != "" {
-		err := c.EnablePortLayer2forward(ls, liveMigrationPortSrc)
-		if err != nil {
-			return err
-		}
-		if err = c.SetPortExternalIds(liveMigrationPortSrc, "liveMigration", "1"); err != nil {
+		if err := c.SetPortExternalIds(liveMigrationPortSrc, "liveMigration", "1"); err != nil {
 			klog.Errorf("set port externalIds failed, %v", err)
 			return err
 		}

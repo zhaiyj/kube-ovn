@@ -173,4 +173,6 @@ const (
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
 
 	CIDRNone = "none"
+
+	KubeVirtVmLabel = "kubevirt.io/vm"
 )

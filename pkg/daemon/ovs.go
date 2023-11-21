@@ -207,13 +207,19 @@ func configureContainerNic(podName, nicName, ifName string, ipAddr, gateway stri
 					return fmt.Errorf("failed to disable ipv6 on all nic: %v", err)
 				}
 				klog.Infof("disable ipv6 for pod %s", podName)
-				var pureV4Ip string
+				var pureV4Ip, pureV4Gateway string
 				for _, ipStr := range strings.Split(ipAddr, ",") {
 					if util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
 						pureV4Ip = ipStr
 					}
 				}
+				for _, gwStr := range strings.Split(gateway, ",") {
+					if util.CheckProtocol(gwStr) == kubeovnv1.ProtocolIPv4 {
+						pureV4Gateway = gwStr
+					}
+				}
 				ipAddr = pureV4Ip
+				gateway = pureV4Gateway
 			}
 		}
 

@@ -197,11 +197,7 @@ func configureContainerNic(podName, nicName, ifName string, ipAddr, gateway stri
 			if err != nil {
 				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
 			}
-			if value != "0" && !strings.Contains(podName, "virt-launcher-") {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
-			} else {
+			if value == "0" && strings.Contains(podName, "virt-launcher-") {
 				// disable ipv6 in virt-launcher init container
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "1"); err != nil {
 					return fmt.Errorf("failed to disable ipv6 on all nic: %v", err)
@@ -220,6 +216,10 @@ func configureContainerNic(podName, nicName, ifName string, ipAddr, gateway stri
 				}
 				ipAddr = pureV4Ip
 				gateway = pureV4Gateway
+			} else if value != "0" {
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+				}
 			}
 		}
 

@@ -197,31 +197,32 @@ func configureContainerNic(podName, nicName, ifName string, ipAddr, gateway stri
 			if err != nil {
 				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
 			}
-			if value != "0" && !strings.Contains(podName, "virt-launcher-") {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
-			} else {
+			if value == "0" && strings.Contains(podName, "virt-launcher-") {
 				// disable ipv6 in virt-launcher init container
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "1"); err != nil {
 					return fmt.Errorf("failed to disable ipv6 on all nic: %v", err)
 				}
 				klog.Infof("disable ipv6 for pod %s", podName)
-				var pureV4Ip, pureV4Gateway string
-				for _, ipStr := range strings.Split(ipAddr, ",") {
-					if util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
-						pureV4Ip = ipStr
+				if ipAddr != util.CIDRNone {
+					var pureV4Ip, pureV4Gateway string
+					for _, ipStr := range strings.Split(ipAddr, ",") {
+						if util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
+							pureV4Ip = ipStr
+						}
 					}
-				}
-				for _, gwStr := range strings.Split(gateway, ",") {
-					if util.CheckProtocol(gwStr) == kubeovnv1.ProtocolIPv4 {
-						pureV4Gateway = gwStr
+					for _, gwStr := range strings.Split(gateway, ",") {
+						if util.CheckProtocol(gwStr) == kubeovnv1.ProtocolIPv4 {
+							pureV4Gateway = gwStr
+						}
 					}
+					ipAddr = pureV4Ip
+					gateway = pureV4Gateway
 				}
-				ipAddr = pureV4Ip
-				gateway = pureV4Gateway
+			} else if value != "0" {
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+				}
 			}
-
 		}
 
 		if nicType == util.InternalType {

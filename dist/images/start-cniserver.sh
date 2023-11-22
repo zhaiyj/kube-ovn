@@ -20,7 +20,9 @@ function set_sysctl {
 
 function quit {
     rm -rf $CNI_SOCK
-    ps -ef|grep kube-ovn-daemon|grep -v grep|awk '{print $2}'|xargs kill -9
+    set +e
+    pkill -9 -e kube-ovn-daemon
+    set -e
     exit 0
 }
 trap quit EXIT
@@ -57,6 +59,8 @@ set_sysctl net.ipv4.neigh.default.gc_thresh3 $gc_thresh3
 set_sysctl net.netfilter.nf_conntrack_tcp_be_liberal $SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL
 
 echo "killing old process"
-ps -ef|grep kube-ovn-daemon|grep -v grep|awk '{print $2}'|xargs kill -9
+set +e
+pkill -9 -e kube-ovn-daemon
+set -e
 
 ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"

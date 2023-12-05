@@ -355,7 +355,6 @@ func tryUpdateLabel(labels map[string]string, key string, isleader bool, modify_
 	return false
 }
 
-/*
 func compactDataBase(ctrlSock string) {
 	var command = []string{
 		"-t",
@@ -371,7 +370,6 @@ func compactDataBase(ctrlSock string) {
 		klog.Errorf("compactDataBase err %v", err)
 	}
 }
-*/
 
 func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	if podName == "" || podNamespace == "" {
@@ -433,8 +431,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 			stealLock()
 		}
 	}
-	//compactDataBase("/var/run/ovn/ovnnb_db.ctl")
-	//compactDataBase("/var/run/ovn/ovnsb_db.ctl")
+	compactDataBase("/var/run/ovn/ovnnb_db.ctl")
+	compactDataBase("/var/run/ovn/ovnsb_db.ctl")
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {

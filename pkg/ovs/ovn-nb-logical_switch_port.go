@@ -23,18 +23,15 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 		return err
 	}
 
-	// ignore
-	if exist {
-		return nil
-	}
-
 	/* normal lsp creation */
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID:        ovsclient.NamedUUID(),
 		Name:        lspName,
 		ExternalIDs: make(map[string]string),
 	}
-
+	if ip == util.CIDRNone {
+		ip = ""
+	}
 	ipList := strings.Split(ip, ",")
 	vipList := strings.Split(vips, ",")
 	addresses := make([]string, 0, len(ipList)+len(vipList)+1) // +1 is the mac length
@@ -63,7 +60,11 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 		lsp.ExternalIDs["liveMigration"] = "1"
 	} else {
 		// set mac and ip
-		lsp.Addresses = []string{strings.Join(addresses, " ")}
+		if len(addresses) > 1 {
+			lsp.Addresses = []string{strings.Join(addresses, " ")}
+		} else {
+			lsp.Addresses = addresses
+		}
 	}
 
 	if portSecurity {
@@ -84,9 +85,9 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 	}
 
 	// add lsp which does not belong to default vpc to default-securitygroup when default-securitygroup configMap exist
-	//if vpc != "" && vpc != util.DefaultVpc && !strings.Contains(securityGroups, util.DefaultSecurityGroupName) {
+	// if vpc != "" && vpc != util.DefaultVpc && !strings.Contains(securityGroups, util.DefaultSecurityGroupName) {
 	//	lsp.ExternalIDs[associatedSgKeyPrefix+util.DefaultSecurityGroupName] = "false"
-	//}
+	// }
 
 	// set vips info to external-ids
 	if len(vips) != 0 {
@@ -114,7 +115,6 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 		if err != nil {
 			return fmt.Errorf("generate operations for creating logical switch port %s: %v", lspName, err)
 		}
-
 		if err = c.Transact("lsp-add", ops); err != nil {
 			return fmt.Errorf("create logical switch port %s: %v", lspName, err)
 		}

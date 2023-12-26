@@ -604,7 +604,11 @@ func (c *Controller) handleAddPod(key string) error {
 			gwAnnotationValue = checkoutCidrByIP(ipStr, subnet.Spec.Gateway)
 		} else {
 			ipStr = util.CIDRNone
-			mac = util.GenerateMac()
+			mac = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+			if mac == "" {
+				mac = util.GenerateMac()
+			}
+			klog.Infof("allocate mac %s for %s", mac, pod.Name)
 			cidrAnnotationValue = subnet.Spec.CIDRBlock
 			gwAnnotationValue = subnet.Spec.Gateway
 		}
@@ -743,7 +747,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 
 	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
-	//ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
+	// ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -791,10 +795,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	for _, port := range ports {
 		sgs, err := c.getPortSg(&port)
 		if err != nil {
-			klog.Warningf("filed to get port '%s' sg, %v", port, err)
+			klog.Warningf("filed to get port '%s' sg, %v", port.Name, err)
 		}
 		if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", port, err)
+			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
 		if !keepIpCR {

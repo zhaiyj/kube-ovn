@@ -119,7 +119,7 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 			return fmt.Errorf("create logical switch port %s: %v", lspName, err)
 		}
 	} else {
-		ops, err := c.UpdateLogicalSwitchPortOp(lsp, lsp.PortSecurity, lsp.Addresses, lsp.ExternalIDs, lsp.Dhcpv4Options, lsp.Dhcpv6Options)
+		ops, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.PortSecurity, &lsp.Addresses, &lsp.ExternalIDs, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options)
 		if err != nil {
 			return fmt.Errorf("generate operations for update logical switch port %s: %v", lspName, err)
 		}

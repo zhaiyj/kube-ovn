@@ -856,6 +856,11 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		klog.Errorf("failed to get vf %d representor, %v", vfIndex, err)
 		return "", "", err
 	}
+	// make sure rep link detach from ovs-system
+	if err = makeSureRepLinkDetachFromOvsSystem(rep); err != nil {
+		return "", "", fmt.Errorf("failed to detach rep link %s from ovs-system, %v", rep, err)
+	}
+
 	oldHostRepName := rep
 
 	// 5. rename the host VF representor
@@ -881,6 +886,41 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		}
 	}
 	return hostNicName, vfNetdevice, nil
+}
+
+func makeSureRepLinkDetachFromOvsSystem(rep string) (err error) {
+	upperOvsSystem := filepath.Join(sriovnet.NetSysDir, rep, "upper_ovs-system")
+	// rep should not attach ovs-system
+	_, err = os.Stat(upperOvsSystem)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat %s, %v", upperOvsSystem, err)
+	}
+
+	maxRetry := 3
+	for i := 0; i < maxRetry; i++ {
+		klog.Infof("try to detach %s from ovs-system", rep)
+		output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", rep)
+		if err != nil {
+			return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
+		}
+
+		// wait rep detach from ovs-system
+		time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+
+		_, err = os.Stat(upperOvsSystem)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("failed to stat %s, %v", upperOvsSystem, err)
+		}
+
+	}
+
+	return fmt.Errorf("failed to detach %s from ovs-system", rep)
 }
 
 func renameLink(curName, newName string) error {

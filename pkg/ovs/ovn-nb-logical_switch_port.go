@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -721,4 +722,34 @@ func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) *strset.Set {
 	}
 
 	return sgs
+}
+
+func (c *ovnClient) SetLogicalSwitchPortDHCPOptions(lspName string, options string, protocol string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
+	}
+
+	var op []ovsdb.Operation
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		lsp.Dhcpv4Options = &options
+		op, err = c.UpdateLogicalSwitchPortOp(lsp, &lsp.Dhcpv4Options)
+		if err != nil {
+			return err
+		}
+	} else if protocol == kubeovnv1.ProtocolIPv6 {
+		lsp.Dhcpv6Options = &options
+		op, err = c.UpdateLogicalSwitchPortOp(lsp, &lsp.Dhcpv6Options)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("set logical switch port %s options %s,  invalid protocol:%s", lspName, options, protocol)
+	}
+
+	if err := c.Transact("lsp-update", op); err != nil {
+		return fmt.Errorf("failed to set logical switch port option dhcp options:%v", err)
+	}
+
+	return nil
 }

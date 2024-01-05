@@ -107,7 +107,8 @@ func parseDHCPOptions(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.Split(raw, ",")
+	// split dhcp options, consider that dns options can have comma
+	options := splitDHCPOptionsLine(raw)
 	for _, option := range options {
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
@@ -118,6 +119,32 @@ func parseDHCPOptions(raw string) map[string]string {
 	}
 
 	return dhcpOpt
+}
+
+func splitDHCPOptionsLine(line string) []string {
+	var fields []string
+	var currentField string
+	var inQuotes bool
+
+	for _, char := range line {
+		switch char {
+		case ',':
+			if inQuotes {
+				currentField += string(char)
+			} else {
+				fields = append(fields, currentField)
+				currentField = ""
+			}
+		case '"':
+			inQuotes = !inQuotes
+		default:
+			currentField += string(char)
+		}
+	}
+
+	fields = append(fields, currentField)
+
+	return fields
 }
 
 func matchAddressSetName(asName string) bool {

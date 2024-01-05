@@ -63,6 +63,7 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 	SetLogicalSwitchPortsSecurityGroup(sgName string, op string) error
+	SetLogicalSwitchPortDHCPOptions(lspName string, options string, protocol string) error
 	EnablePortLayer2forward(lspName string) error
 	DeleteLogicalSwitchPort(lspName string) error
 	ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error)
@@ -147,7 +148,7 @@ type NAT interface {
 }
 
 type DHCPOptions interface {
-	UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, nonRouter bool) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName string, protocol string) error
 	DeleteDHCPOptionsByUUIDs(uuidList ...string) error
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)

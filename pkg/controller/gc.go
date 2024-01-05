@@ -154,7 +154,7 @@ func (c *Controller) gcLogicalSwitch() error {
 	}
 	var uuidToDeleteList = []string{}
 	for _, item := range dhcpOptions {
-		ls := item.ExternalIDs["ls"]
+		ls := strings.TrimSuffix(item.ExternalIDs["ls"], util.DHCPLsNonRouterSuffix)
 		if !util.IsStringIn(ls, subnetNames) {
 			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
 		}

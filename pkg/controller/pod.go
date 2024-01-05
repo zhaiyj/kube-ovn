@@ -627,6 +627,8 @@ func (c *Controller) handleAddPod(key string) error {
 			pod.Annotations[util.PodNicAnnotation] = c.config.PodNicType
 		}
 
+		isDefaultRoute := pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, podNet.ProviderName)] == "true"
+
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
@@ -663,10 +665,26 @@ func (c *Controller) handleAddPod(key string) error {
 				}
 			}
 			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
+
+			dhcpV4Options := strings.Split(subnet.Status.DHCPv4OptionsUUID, ",")
+			dhcpV6Options := strings.Split(subnet.Status.DHCPv6OptionsUUID, ",")
+
 			dhcpOptions := &ovs.DHCPOptionsUUIDs{
-				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
-				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
+				DHCPv4OptionsUUID: dhcpV4Options[0],
+				DHCPv6OptionsUUID: dhcpV6Options[0],
 			}
+
+			// if not default route, set dhcpOptions to non router
+			if !isDefaultRoute {
+				if len(dhcpV4Options) > 1 {
+					dhcpOptions.DHCPv4OptionsUUID = dhcpV4Options[1]
+				}
+
+				if len(dhcpV6Options) > 1 {
+					dhcpOptions.DHCPv6OptionsUUID = dhcpV6Options[1]
+				}
+			}
+
 			if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
@@ -944,13 +962,27 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 			}
 		}
 
+		isDefaultRoute := pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, podNet.ProviderName)] == "true"
+
 		// validate dhcp option
 		var dhcpOptions *ovs.DHCPOptionsUUIDs
 		if podNet.Subnet.Spec.EnableDHCP {
+			dhcpV4Options := strings.Split(podNet.Subnet.Status.DHCPv4OptionsUUID, ",")
+			dhcpV6Options := strings.Split(podNet.Subnet.Status.DHCPv6OptionsUUID, ",")
 			dhcpOptions = &ovs.DHCPOptionsUUIDs{
-				DHCPv4OptionsUUID: podNet.Subnet.Status.DHCPv4OptionsUUID,
-				DHCPv6OptionsUUID: podNet.Subnet.Status.DHCPv6OptionsUUID,
+				DHCPv4OptionsUUID: dhcpV4Options[0],
+				DHCPv6OptionsUUID: dhcpV6Options[0],
 			}
+			if !isDefaultRoute {
+				if len(dhcpV4Options) > 1 {
+					dhcpOptions.DHCPv4OptionsUUID = dhcpV4Options[1]
+				}
+
+				if len(dhcpV6Options) > 1 {
+					dhcpOptions.DHCPv6OptionsUUID = dhcpV6Options[1]
+				}
+			}
+
 			if (v6 != nil && dhcpOptions.DHCPv6OptionsUUID == "") ||
 				(v4 != nil && dhcpOptions.DHCPv4OptionsUUID == "") {
 				return fmt.Errorf("failed to get DHCPv6OptionsUUID from subnet %s, please check", podNet.Subnet.Name)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -18,6 +19,7 @@ type DHCPOptionsUUIDs struct {
 }
 
 func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
+	klog.Infof("create dhcp options ls:%s, cidr:%s, optionStr:[%s]", lsName, cidr, options)
 	dhcpOpt, err := newDHCPOptions(lsName, cidr, options)
 	if err != nil {
 		return err
@@ -35,7 +37,7 @@ func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	return nil
 }
 
-func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error) {
+func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, nonRouter bool) (*DHCPOptionsUUIDs, error) {
 	lsName := subnet.Name
 	cidrBlock := subnet.Spec.CIDRBlock
 	gateway := subnet.Spec.Gateway
@@ -65,7 +67,7 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 		v4Gateway = gateways[0]
 	}
 
-	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options)
+	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, nonRouter)
 	if err != nil {
 		return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
 	}
@@ -81,7 +83,7 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 	}, nil
 }
 
-func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (uuid string, err error) {
+func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string, nonRouter bool) (uuid string, err error) {
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv4 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -98,7 +100,15 @@ func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (
 			mac = dhcpOpt.Options["server_mac"]
 		}
 
-		options = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, gateway, "169.254.0.254", mac)
+		options = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,dns_server=\"%s\"", 3600, gateway, "169.254.0.254", mac, "{114.114.114.114, 8.8.8.8}")
+	}
+
+	if nonRouter {
+		mac := util.GenerateMac()
+		if dhcpOpt != nil && len(dhcpOpt.Options) != 0 {
+			mac = dhcpOpt.Options["server_mac"]
+		}
+		options = fmt.Sprintf("lease_time=%d,server_id=%s,server_mac=%s,dns_server=\"%s\"", 3600, "169.254.0.254", mac, "{114.114.114.114, 8.8.8.8}")
 	}
 
 	/* update */
@@ -124,41 +134,48 @@ func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (
 func (c *ovnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid string, err error) {
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv6 {
-		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
+		return "", fmt.Errorf("cidr %s must be a valid ipv6 address", cidr)
 	}
-
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
 		return
 	}
 
-	if len(options) == 0 {
-		mac := util.GenerateMac()
-		if dhcpOpt != nil && len(dhcpOpt.Options) != 0 {
-			mac = dhcpOpt.Options["server_id"]
+	if len(cidr) != 0 {
+		if len(options) == 0 {
+			mac := util.GenerateMac()
+			if dhcpOpt != nil && len(dhcpOpt.Options) != 0 {
+				mac = dhcpOpt.Options["server_id"]
+			}
+
+			options = fmt.Sprintf("server_id=%s", mac)
 		}
 
-		options = fmt.Sprintf("server_id=%s", mac)
+		/* update */
+		if dhcpOpt != nil {
+			dhcpOpt.Cidr = cidr
+			dhcpOpt.Options = parseDHCPOptions(options)
+			return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
+		}
+
+		/* create */
+		if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
+			return "", fmt.Errorf("create dhcp options: %v", err)
+		}
+
+		dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
+		if err != nil {
+			return "", err
+		}
+		return dhcpOpt.UUID, nil
+	} else if dhcpOpt != nil {
+		// delete
+		if err = c.DeleteDHCPOptions(lsName, kubeovnv1.ProtocolIPv6); err != nil {
+			return "", fmt.Errorf("delete dhcp options for switch %s protocol %s failed: %v", lsName, kubeovnv1.ProtocolIPv6, err)
+		}
 	}
 
-	/* update */
-	if dhcpOpt != nil {
-		dhcpOpt.Cidr = cidr
-		dhcpOpt.Options = parseDHCPOptions(options)
-		return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
-	}
-
-	/* create */
-	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
-		return "", fmt.Errorf("create dhcp options: %v", err)
-	}
-
-	dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
-	if err != nil {
-		return "", err
-	}
-
-	return dhcpOpt.UUID, nil
+	return
 }
 
 // updateDHCPOptions update dhcp options
@@ -252,9 +269,9 @@ func (c *ovnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool)
 		return nil, fmt.Errorf("not found logical switch %s %s dhcp options: %v", lsName, protocol, err)
 	}
 
-	if len(dhcpOptList) > 1 {
-		return nil, fmt.Errorf("more than one %s dhcp options in logical switch %s", protocol, lsName)
-	}
+	//	if len(dhcpOptList) > 1 {
+	//		return nil, fmt.Errorf("more than one %s dhcp options in logical switch %s", protocol, lsName)
+	//	}
 
 	return &dhcpOptList[0], nil
 }

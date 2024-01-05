@@ -175,4 +175,7 @@ const (
 	CIDRNone = "none"
 
 	KubeVirtVmLabel = "kubevirt.io/vm"
+
+	DHCPLsNonRouterTemplate = "%s-NonRouter"
+	DHCPLsNonRouterSuffix   = "-NonRouter"
 )

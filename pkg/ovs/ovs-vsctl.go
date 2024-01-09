@@ -268,17 +268,17 @@ func ValidatePortVendor(port string) (bool, error) {
 	return util.ContainsString(output, port), err
 }
 
-//config mirror for interface by pod annotations and install param
+// config mirror for interface by pod annotations and install param
 func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	if !globalMirror {
-		//find interface name for port
+		// find interface name for port
 		interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 		if err != nil {
 			return err
 		}
 		for _, ifName := range interfaceList {
-			//ifName example: xxx_h
-			//find port uuid by interface name
+			// ifName example: xxx_h
+			// find port uuid by interface name
 			portUUIDs, err := ovsFind("port", "_uuid", fmt.Sprintf("name=%s", ifName))
 			if err != nil {
 				return err
@@ -288,7 +288,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 			}
 			portId := portUUIDs[0]
 			if open == "true" {
-				//add port to mirror
+				// add port to mirror
 				err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
 				if err != nil {
 					return err
@@ -306,7 +306,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 				}
 				for _, mirrorPortIds := range mirrorPorts {
 					if strings.Contains(mirrorPortIds, portId) {
-						//remove port from mirror
+						// remove port from mirror
 						_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
 						if err != nil {
 							return err
@@ -317,6 +317,51 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 		}
 	}
 	return nil
+}
+
+type RepInterface struct {
+	Name        string
+	ExternalIds map[string]string
+}
+
+func GetRepPorts() (out []*RepInterface) {
+	// "0e31a5ab_net1_h"
+	// {iface-id=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9.evm-1021444.ovn-attach-1.ecf-cluster.ovn, ip="172.16.0.3", pod_name=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9, pod_namespace=evm-1021444, pod_netns="/proc/104318/ns/net"}
+	interfaceList, err := ovsFind("interface", "name,external_ids", "status:driver_name=mlx5e_rep")
+	if err != nil {
+		klog.Errorf("failed to list rep interface %v", err)
+		return nil
+	}
+	for _, item := range interfaceList {
+		tmp := strings.Split(item, "\n")
+		if len(tmp) != 2 {
+			klog.Warningf("unexpected interace %s", tmp)
+			continue
+		}
+		name := strings.Trim(tmp[0], "\"")
+
+		repInterface := &RepInterface{
+			Name:        name,
+			ExternalIds: map[string]string{},
+		}
+		// iface-id=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9.evm-1021444.ovn-attach-1.ecf-cluster.ovn, ip="172.16.0.3", pod_name=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9, pod_namespace=evm-1021444, pod_netns="/proc/104318/ns/net"
+		externaIdsStr := strings.Trim(tmp[1], "{}")
+		pairStrArr := strings.Split(externaIdsStr, ", ")
+
+		for _, pair := range pairStrArr {
+			kv := strings.Split(pair, "=")
+			if len(kv) != 2 {
+				klog.Warningf("unexpeced external id %s", pair)
+				continue
+			}
+			k := kv[0]
+			v := strings.Trim(kv[1], "\"")
+			repInterface.ExternalIds[k] = v
+		}
+
+		out = append(out, repInterface)
+	}
+	return
 }
 
 func GetResidualInternalPorts() []string {

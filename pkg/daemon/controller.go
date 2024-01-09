@@ -989,6 +989,30 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
+func (c *Controller) cleanRep() error {
+	repIfaces := ovs.GetRepPorts()
+	for _, item := range repIfaces {
+		podNsPath := item.ExternalIds["pod_netns"]
+		if podNsPath == "" {
+			continue
+		}
+		_, err := os.Stat(podNsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				klog.Infof("gc ovs rep port %s", item.Name)
+				output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", item.Name)
+				if err != nil {
+					klog.Warningf("failed to delete ovs port %v, %q", err, output)
+				}
+			} else {
+				klog.Warningf("failed to stat path %s", podNsPath)
+			}
+		}
+
+	}
+	return nil
+}
+
 var lastNoPodOvsPort map[string]bool
 
 func (c *Controller) markAndCleanInternalPort() error {
@@ -1213,6 +1237,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs port error: %v", err)
 		}
 	}, 5*time.Minute, stopCh)
+	go wait.Until(func() {
+		if err := c.cleanRep(); err != nil {
+			klog.Errorf("gc ovs rep error: %v", err)
+		}
+	}, 1*time.Minute, stopCh)
 	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")

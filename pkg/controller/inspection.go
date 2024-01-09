@@ -43,11 +43,12 @@ func (c *Controller) inspectPod() error {
 				for _, lsp := range lsps {
 					if portName == lsp.Name {
 						isLspExist = true
+						break
 					}
 				}
 				if !isLspExist {
 					delete(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName))
-					delete(pod.Annotations, util.RoutedAnnotation)
+					delete(pod.Annotations, fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName))
 					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
 						klog.Errorf("patch pod %s/%s failed %v during inspection", pod.Name, pod.Namespace, err)
 						return err

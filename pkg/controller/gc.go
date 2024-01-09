@@ -307,14 +307,14 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 
-		klog.Infof("gc logical switch port %s", lsp)
+		klog.Infof("gc logical switch port %s", lsp.Name)
 		if err := c.ovnClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", lsp, err)
+			klog.Errorf("failed to delete lsp %s, %v", lsp.Name, err)
 			return err
 		}
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp.Name, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", lsp, err)
+				klog.Errorf("failed to delete ip %s, %v", lsp.Name, err)
 				return err
 			}
 		}

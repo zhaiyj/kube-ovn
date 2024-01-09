@@ -667,6 +667,13 @@ func (c *ovnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fiel
 		return nil, nil
 	}
 
+	if lsp.ExternalIDs == nil {
+		lsp.ExternalIDs = make(map[string]string)
+	}
+
+	// attach necessary info
+	lsp.ExternalIDs["vendor"] = util.CniTypeName
+
 	op, err := c.Where(lsp).Update(lsp, fields...)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for updating logical switch port %s: %v", lsp.Name, err)

@@ -452,7 +452,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		klog.Errorf("set ips to address set %s: %v", v6AsName, err)
 		return err
 	}
-	//c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 	return nil
 }
 

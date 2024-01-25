@@ -21,7 +21,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5
-	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
+	github.com/ovn-org/libovsdb v0.6.1-0.20240102151534-c71cb09c3590
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.12.1
 	github.com/scylladb/go-set v1.0.2
@@ -29,7 +29,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
 	github.com/vishvananda/netlink v1.1.1-0.20211101163509-b10eb8fe5cf6
-	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab
+	golang.org/x/sys v0.5.0
 	google.golang.org/grpc v1.40.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.7.2
 	k8s.io/api v0.23.1
@@ -93,10 +93,10 @@ require (
 	github.com/spf13/viper v1.8.1 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
-	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/term v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

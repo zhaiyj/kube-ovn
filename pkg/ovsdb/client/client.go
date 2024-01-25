@@ -20,7 +20,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-const timeout = 3 * time.Second
+const connectTimeout time.Duration = time.Second * 20
+const inactivityTimeout time.Duration = time.Second * 180
 
 var namedUUIDCounter uint32
 
@@ -45,7 +46,11 @@ func NewNbClient(addr string) (client.Client, error) {
 
 	logger := klog.NewKlogr().WithName("libovsdb")
 	options := []client.Option{
-		client.WithReconnect(timeout, &backoff.ConstantBackOff{Interval: time.Second}),
+		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
+		// take longer than a normal ovsdb operation. Give it a bit more time so
+		// we don't time out and enter a reconnect loop. In addition it also enables
+		// inactivity check on the ovsdb connection.
+		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
 		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
@@ -86,7 +91,8 @@ func NewNbClient(addr string) (client.Client, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+
 	defer cancel()
 	if err = c.Connect(ctx); err != nil {
 		klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)

@@ -262,24 +262,33 @@ func (c *ovnClient) CreateSgDenyAllAcl(sgName string) error {
 	return nil
 }
 
-func (c *ovnClient) CreateSgBaseACL(sgName string, direction string) error {
+func (c *ovnClient) CreateSgBaseACL(sgName, direction string) error {
 	pgName := GetSgPortGroupName(sgName)
 
 	// ingress rule
 	portDirection := "outport"
 	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
 	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
+	icmpv6Type := "{130, 134, 135, 136}"
+	// 130 group membership query
+	// 133 router solicitation
+	// 134 router advertisement
+	// 135 neighbor solicitation
+	// 136 neighbor advertisement
+
 	if direction == ovnnb.ACLDirectionFromLport { // egress rule
 		portDirection = "inport"
 		dhcpv4UdpSrc, dhcpv4UdpDst = dhcpv4UdpDst, dhcpv4UdpSrc
 		dhcpv6UdpSrc, dhcpv6UdpDst = dhcpv6UdpDst, dhcpv6UdpSrc
+		icmpv6Type = "{130, 133, 135, 136}"
 	}
 
 	acls := make([]*ovnnb.ACL, 0)
 
 	newAcl := func(match string) {
-		acl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated)
+		acl, err := c.newAcl(pgName, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated)
 		if err != nil {
+			klog.Error(err)
 			klog.Errorf("new base ingress acl for security group %s: %v", sgName, err)
 			return
 		}
@@ -296,7 +305,7 @@ func (c *ovnClient) CreateSgBaseACL(sgName string, direction string) error {
 	// icmpv6
 	icmpv6Match := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
-		NewAclMatch("icmp6.type", "==", "{130, 134, 135, 136}", ""),
+		NewAclMatch("icmp6.type", "==", icmpv6Type, ""),
 		NewAclMatch("icmp6.code", "==", "0", ""),
 		NewAclMatch("ip.ttl", "==", "255", ""),
 	)
@@ -318,8 +327,14 @@ func (c *ovnClient) CreateSgBaseACL(sgName string, direction string) error {
 		NewAclMatch("udp.dst", "==", dhcpv6UdpDst, ""),
 		NewAclMatch("ip6", "", "", ""),
 	)
-
 	newAcl(dhcpv6Match.String())
+
+	// vrrp
+	vrrpMatch := NewAndAclMatch(
+		NewAclMatch(portDirection, "==", "@"+pgName, ""),
+		NewAclMatch("ip.proto", "==", "112", ""),
+	)
+	newAcl(vrrpMatch.String())
 
 	if err := c.CreateAcls(pgName, portGroupKey, acls...); err != nil {
 		return fmt.Errorf("add ingress acls to port group %s: %v", pgName, err)

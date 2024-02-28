@@ -268,22 +268,21 @@ func (c *Controller) checkAndAddIPAddressChange(key string, pod *v1.Pod, isState
 	if pod.Annotations == nil {
 		return
 	}
-	if !isStateful {
-		for _, podNet := range podNets {
-			// skip provider ovn
-			if podNet.ProviderName == util.OvnProvider {
-				continue
-			}
-			// 	skip if migrate ip address is empty
-			migrateIPAddress := pod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)]
-			if migrateIPAddress == "" {
-				continue
-			}
-			nowIPAddress := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-			if migrateIPAddress != nowIPAddress {
-				c.updatePodIPAddressQueue.Add(key)
-				break
-			}
+
+	for _, podNet := range podNets {
+		// skip provider ovn
+		if podNet.ProviderName == util.OvnProvider {
+			continue
+		}
+		// 	skip if migrate ip address is empty
+		migrateIPAddress := pod.Annotations[fmt.Sprintf(util.MigrateIpAddressAnnotationTemplate, podNet.ProviderName)]
+		if migrateIPAddress == "" {
+			continue
+		}
+		nowIPAddress := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		if migrateIPAddress != nowIPAddress {
+			c.updatePodIPAddressQueue.Add(key)
+			break
 		}
 	}
 }
@@ -1011,9 +1010,13 @@ func (c *Controller) handleUpdatePodIPAddress(key string) error {
 		}
 
 		// sync dhcp options
-		err = c.ovnLegacyClient.SetPortDhcpOptions(nicName, dhcpOptions)
+		err = c.ovnClient.SetLogicalSwitchPortDHCPOptions(nicName, dhcpOptions.DHCPv4OptionsUUID, kubeovnv1.ProtocolIPv4)
 		if err != nil {
-			return fmt.Errorf("failed to set port %s dhcp options, %s", nicName, err.Error())
+			return fmt.Errorf("failed to set port %s dhcpv4 options, %s", nicName, err.Error())
+		}
+		err = c.ovnClient.SetLogicalSwitchPortDHCPOptions(nicName, dhcpOptions.DHCPv6OptionsUUID, kubeovnv1.ProtocolIPv6)
+		if err != nil {
+			return fmt.Errorf("failed to set port %s dhcpv6 options, %s", nicName, err.Error())
 		}
 
 		// update ip crd

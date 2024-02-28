@@ -732,6 +732,9 @@ func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) *strset.Set {
 }
 
 func (c *ovnClient) SetLogicalSwitchPortDHCPOptions(lspName string, options string, protocol string) error {
+	if options == "" {
+		return nil
+	}
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)

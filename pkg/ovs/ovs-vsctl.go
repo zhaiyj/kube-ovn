@@ -319,15 +319,15 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	return nil
 }
 
-type RepInterface struct {
+type OvsInterface struct {
 	Name        string
 	ExternalIds map[string]string
 }
 
-func GetRepPorts() (out []*RepInterface) {
+func GetOvsPorts(findCondition string) (out []*OvsInterface) {
 	// "0e31a5ab_net1_h"
 	// {iface-id=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9.evm-1021444.ovn-attach-1.ecf-cluster.ovn, ip="172.16.0.3", pod_name=virt-launcher-evm-cjvcgam3j2asjep18teg-vx8f9, pod_namespace=evm-1021444, pod_netns="/proc/104318/ns/net"}
-	interfaceList, err := ovsFind("interface", "name,external_ids", "status:driver_name=mlx5e_rep")
+	interfaceList, err := ovsFind("interface", "name,external_ids", findCondition)
 	if err != nil {
 		klog.Errorf("failed to list rep interface %v", err)
 		return nil
@@ -340,7 +340,7 @@ func GetRepPorts() (out []*RepInterface) {
 		}
 		name := strings.Trim(tmp[0], "\"")
 
-		repInterface := &RepInterface{
+		repInterface := &OvsInterface{
 			Name:        name,
 			ExternalIds: map[string]string{},
 		}

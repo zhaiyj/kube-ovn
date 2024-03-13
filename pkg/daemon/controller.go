@@ -989,8 +989,38 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
+func (c *Controller) cleanRemainDownPort() error {
+	reErrPort := ovs.GetOvsPorts("link_state=down")
+	for _, item := range reErrPort {
+		podNsPath := item.ExternalIds["pod_netns"]
+		if podNsPath == "" {
+			continue
+		}
+		_, err := os.Stat(podNsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				klog.Infof("gc ovs remain down port %s", item.Name)
+				output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", item.Name)
+				if err != nil {
+					klog.Warningf("failed to delete down ovs port %v, %q", err, output)
+				} else {
+					cmd := exec.Command("ip", "link", "delete", item.Name)
+					output, err := cmd.CombinedOutput()
+					if err != nil {
+						klog.Errorf("delete ovs down port success but failed to delete remain veth port %v, %q", err, output)
+					}
+				}
+				klog.Infof("gc ovs remain down port success %s", item.Name)
+			} else {
+				klog.Warningf("failed to stat path %s", podNsPath)
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Controller) cleanRep() error {
-	repIfaces := ovs.GetRepPorts()
+	repIfaces := ovs.GetOvsPorts("status:driver_name=mlx5e_rep")
 	for _, item := range repIfaces {
 		podNsPath := item.ExternalIds["pod_netns"]
 		if podNsPath == "" {
@@ -1242,6 +1272,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs rep error: %v", err)
 		}
 	}, 1*time.Minute, stopCh)
+	go wait.Until(func() {
+		if err := c.cleanRemainDownPort(); err != nil {
+			klog.Errorf("gc remain ovs down port error: %v", err)
+		}
+	}, 10*time.Minute, stopCh)
+
 	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")

@@ -45,7 +45,9 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			return err
 		}
 	}
-
+	if err = configureHostNic(hostNicName); err != nil {
+		return err
+	}
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID)
@@ -64,9 +66,6 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
-	}
-	if err = configureHostNic(hostNicName); err != nil {
-		return err
 	}
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
 		return err

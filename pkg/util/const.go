@@ -95,6 +95,7 @@ const (
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
+	NodeNicMss        = "1360"
 
 	SecurityGroupHighestPriority = "2300"
 	SecurityGroupBasePriority    = "2005"

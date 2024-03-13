@@ -261,10 +261,13 @@ func (c *ovnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, i
 		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
 
 		lsp, err := c.GetLogicalSwitchPort(lspName, true)
-		if err != nil {
+		if err != nil || lsp == nil {
 			return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 		}
 
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
 		lsp.Options["virtual-parents"] = parents
 		if len(parents) == 0 {
 			delete(lsp.Options, "virtual-parents")
@@ -286,7 +289,7 @@ func (c *ovnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, i
 
 func (c *ovnClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
-	if err != nil {
+	if err != nil || lsp == nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 	if lsp.Options == nil {

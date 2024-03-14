@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -201,9 +202,18 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
+		var customMtu int
 		customMtuStr := pod.Annotations[fmt.Sprintf(util.MtuAnnotationTemplate, podRequest.Provider)]
-		if customMtu, err := strconv.Atoi(customMtuStr); err == nil && customMtu > 0 && customMtu < mtu {
-			mtu = customMtu
+		if customMtu, err = strconv.Atoi(customMtuStr); err == nil && customMtu > 0 {
+			// Use custom mtu value
+			mtu = int(math.Min(float64(customMtu), float64(mtu)))
+		} else {
+			// The mtu value that is not used for customization is limited to 1500
+			mtu = int(math.Min(float64(mtu), util.DefaultMaxMtu))
+		}
+
+		if nicType == util.OffloadType {
+			mtu = int(math.Min(float64(mtu), util.OffloadTypeNicMaxMtu))
 		}
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)

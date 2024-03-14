@@ -933,7 +933,7 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 // The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
 func (c *Controller) appendMssRule() {
 	if c.config.Iface != "" && c.config.MSS > 0 {
-		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %s", util.NodeNic, util.NodeNicMss)
+		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", util.NodeNic, util.NodeNicMss)
 		MssMangleRule := util.IPTableRule{
 			Table: "mangle",
 			Chain: "POSTROUTING",

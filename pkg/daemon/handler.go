@@ -9,18 +9,18 @@ import (
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/request"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/request"
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"k8s.io/utils/integer"
 )
 
 const (
@@ -201,9 +201,18 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
+		var customMtu int
 		customMtuStr := pod.Annotations[fmt.Sprintf(util.MtuAnnotationTemplate, podRequest.Provider)]
-		if customMtu, err := strconv.Atoi(customMtuStr); err == nil && customMtu > 0 && customMtu < mtu {
-			mtu = customMtu
+		if customMtu, err = strconv.Atoi(customMtuStr); err == nil && customMtu > 0 {
+			// Use custom mtu value
+			mtu = integer.IntMin(customMtu, mtu)
+		} else {
+			// The mtu value that is not used for customization is limited to 1500
+			mtu = integer.IntMin(mtu, util.DefaultMaxMtu)
+		}
+
+		if nicType == util.OffloadType {
+			mtu = integer.IntMin(mtu, util.OffloadTypeNicMaxMtu)
 		}
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)

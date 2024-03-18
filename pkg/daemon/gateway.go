@@ -62,6 +62,7 @@ func (c *Controller) runGateway() {
 	}
 
 	c.appendMssRule()
+	c.deleteUnusedMssRule()
 }
 
 func (c *Controller) setIPSet() error {
@@ -928,16 +929,11 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 	return ret, nil
 }
 
-//Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
-//The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
+// Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
+// The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
 func (c *Controller) appendMssRule() {
 	if c.config.Iface != "" && c.config.MSS > 0 {
-		iface, err := findInterface(c.config.Iface)
-		if err != nil {
-			klog.Errorf("failed to findInterface, %v", err)
-			return
-		}
-		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", iface.Name, c.config.MSS)
+		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", util.NodeNic, util.NodeNicMss)
 		MssMangleRule := util.IPTableRule{
 			Table: "mangle",
 			Chain: "POSTROUTING",
@@ -952,6 +948,29 @@ func (c *Controller) appendMssRule() {
 		case kubeovnv1.ProtocolDual:
 			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv4, MssMangleRule)
 			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv6, MssMangleRule)
+		}
+	}
+}
+
+func (c *Controller) deleteUnusedMssRule() {
+	var num string
+	var err error
+
+	cmdstr := fmt.Sprintf("iptables -t mangle -nvL POSTROUTING --line-numbers")
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to get iptables rule num: %v", err)
+		return
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.Contains(line, "TCPMSS") && (!strings.Contains(line, util.NodeNic) || !strings.Contains(line, "1360")) {
+			num = strings.Fields(line)[0]
+			if err := c.iptables[kubeovnv1.ProtocolIPv4].Delete("mangle", "POSTROUTING", num); err != nil {
+				klog.Errorf("delete iptables rule %s failed, %+v", line, err)
+			}
+
 		}
 	}
 }

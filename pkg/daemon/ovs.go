@@ -15,14 +15,13 @@ import (
 	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
-	goping "github.com/oilbeater/go-ping"
-	"github.com/vishvananda/netlink"
-	"k8s.io/klog/v2"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	goping "github.com/oilbeater/go-ping"
+	"github.com/vishvananda/netlink"
+	"k8s.io/klog"
 )
 
 const gatewayCheckMaxRetry = 200
@@ -160,7 +159,6 @@ func configureHostNic(nicName string) error {
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen: %v", nicName, err)
 	}
-
 	return nil
 }
 

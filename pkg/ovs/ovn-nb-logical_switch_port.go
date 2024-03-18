@@ -260,11 +260,14 @@ func (c *ovnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, i
 	for _, ip := range ips {
 		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
 
-		lsp, err := c.GetLogicalSwitchPort(lspName, true)
+		lsp, err := c.GetLogicalSwitchPort(lspName, false)
 		if err != nil {
 			return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 		}
 
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
 		lsp.Options["virtual-parents"] = parents
 		if len(parents) == 0 {
 			delete(lsp.Options, "virtual-parents")

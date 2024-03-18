@@ -93,8 +93,11 @@ const (
 	NetworkTypeVlan   = "vlan"
 	NetworkTypeGeneve = "geneve"
 
-	NodeNic           = "ovn0"
-	NodeAllowPriority = "3000"
+	NodeNic              = "ovn0"
+	NodeAllowPriority    = "3000"
+	NodeNicMss           = 1360
+	DefaultMaxMtu        = 1500
+	OffloadTypeNicMaxMtu = 4096
 
 	SecurityGroupHighestPriority = "2300"
 	SecurityGroupBasePriority    = "2005"

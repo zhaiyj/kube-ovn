@@ -15,14 +15,13 @@ import (
 	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
-	goping "github.com/oilbeater/go-ping"
-	"github.com/vishvananda/netlink"
-	"k8s.io/klog/v2"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	goping "github.com/oilbeater/go-ping"
+	"github.com/vishvananda/netlink"
+	"k8s.io/klog"
 )
 
 const gatewayCheckMaxRetry = 200
@@ -39,13 +38,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			return err
 		}
 	} else {
-		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, vfDriver, ifName, util.DefaultMaxMtu, mac)
+		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return err
 		}
 	}
-	if err = configureHostNic(hostNicName, nicType); err != nil {
+	if err = configureHostNic(hostNicName); err != nil {
 		return err
 	}
 	ipStr := util.GetIpWithoutMask(ip)
@@ -66,9 +65,6 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
-	}
-	if err = configureHostNic(hostNicName, nicType); err != nil {
-		return err
 	}
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
 		return err
@@ -149,7 +145,7 @@ func generateNicName(containerID, ifname string) (string, string) {
 	return fmt.Sprintf("%s_%s_h", containerID[0:12-len(ifname)], ifname), fmt.Sprintf("%s_%s_c", containerID[0:12-len(ifname)], ifname)
 }
 
-func configureHostNic(nicName, nicType string) error {
+func configureHostNic(nicName string) error {
 	hostLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find host nic %s: %v", nicName, err)
@@ -163,14 +159,6 @@ func configureHostNic(nicName, nicType string) error {
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen: %v", nicName, err)
 	}
-
-	if nicType != util.OffloadType {
-		// Set the mtu of hostLink to 9000 for dynamic configuration of jumbo frames of the container NIC
-		if err = netlink.LinkSetMTU(hostLink, 9000); err != nil {
-			return fmt.Errorf("can not set host nic %s mtu: %v", nicName, err)
-		}
-	}
-
 	return nil
 }
 

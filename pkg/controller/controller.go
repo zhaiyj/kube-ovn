@@ -269,11 +269,6 @@ func NewController(config *Configuration) *Controller {
 		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
 
-	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
-		klog.Fatalf("failed to create ovn client: %v", err)
-	}
-
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
 		DeleteFunc: controller.enqueueDeletePod,
@@ -362,13 +357,17 @@ func NewController(config *Configuration) *Controller {
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(stopCh <-chan struct{}) {
+func (c *Controller) Run(config *Configuration, stopCh <-chan struct{}) {
 	defer c.shutdown()
 	klog.Info("Starting OVN controller")
 
 	// wait for becoming a leader
 	c.leaderElection()
 
+	var err error
+	if c.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
+		klog.Fatalf("failed to create ovn client: %v", err)
+	}
 	// Wait for the caches to be synced before starting workers
 	c.informerFactory.Start(stopCh)
 	c.cmInformerFactory.Start(stopCh)

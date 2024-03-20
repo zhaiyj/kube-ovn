@@ -3,11 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/api/authorization/v1"
@@ -45,7 +46,7 @@ func CmdMain() {
 	}()
 
 	ctl := controller.NewController(config)
-	ctl.Run(stopCh)
+	ctl.Run(config, stopCh)
 }
 
 func loopOvnNbctlDaemon(config *controller.Configuration) {

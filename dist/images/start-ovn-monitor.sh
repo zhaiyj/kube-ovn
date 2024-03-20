@@ -18,4 +18,4 @@ else
   export OVN_NB_DAEMON=$(ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert --db="$(gen_conn_str 6641)" --pidfile --detach --overwrite-pidfile)
 fi
 
-exec ./kube-ovn-monitor $@
+./kube-ovn-monitor $@

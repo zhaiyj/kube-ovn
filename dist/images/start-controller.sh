@@ -34,6 +34,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   export OVN_NB_DAEMON=$(ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert --db="$(gen_conn_str 6641)" --pidfile --detach --overwrite-pidfile)
 fi
-exec ./kube-ovn-controller --ovn-nb-addr="$(gen_conn_str 6641)" \
+./kube-ovn-controller --ovn-nb-addr="$(gen_conn_str 6641)" \
                            --ovn-sb-addr="$(gen_conn_str 6642)" \
                            $@

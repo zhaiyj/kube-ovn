@@ -28,8 +28,7 @@ const gatewayCheckMaxRetry = 200
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) error {
-	var err error
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) (err error) {
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
 		hostNicName, containerNicName, err = setupVethPair(containerID, ifName, mtu)
@@ -37,6 +36,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			klog.Errorf("failed to create veth pair %v", err)
 			return err
 		}
+		defer func() {
+			if err != nil {
+				if err := rollBackVethPair(hostNicName); err != nil {
+					return
+				}
+			}
+		}()
 	} else {
 		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
@@ -44,9 +50,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			return err
 		}
 	}
-	if err = configureHostNic(hostNicName); err != nil {
-		return err
-	}
+
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID)
@@ -60,12 +64,23 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
-
+	defer func() {
+		if err != nil {
+			if err := csh.rollbackOvsPort(hostNicName, containerNicName, nicType); err != nil {
+				return
+			}
+		}
+	}()
 	// host and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
+
+	if err = configureHostNic(hostNicName); err != nil {
+		return err
+	}
+
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
 		return err
 	}
@@ -81,6 +96,21 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return err
 	}
 	return nil
+}
+
+func (csh cniServerHandler) rollbackOvsPort(hostNicName, containerNicName, nicType string) (err error) {
+	var nicName string
+	if nicType == util.InternalType {
+		nicName = containerNicName
+	} else {
+		nicName = hostNicName
+	}
+	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
+	if err != nil {
+		klog.Warningf("failed to delete down ovs port %v, %q", err, output)
+	}
+	klog.Infof("rollback ovs port success %s", nicName)
+	return
 }
 
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName, nicType string) error {
@@ -159,6 +189,7 @@ func configureHostNic(nicName string) error {
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen: %v", nicName, err)
 	}
+
 	return nil
 }
 
@@ -789,6 +820,28 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 		return "", "", fmt.Errorf("failed to crate veth for %v", err)
 	}
 	return hostNicName, containerNicName, nil
+}
+
+func rollBackVethPair(nicName string) error {
+	hostLink, err := netlink.LinkByName(nicName)
+	if err != nil {
+		// If link already not exists, return quietly
+		// E.g. Internal port had been deleted by Remove ovs port previously
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return nil
+		}
+		return fmt.Errorf("find host link %s failed %v", nicName, err)
+	}
+
+	hostLinkType := hostLink.Type()
+	// Sometimes no deviceID input for vf nic, avoid delete vf nic.
+	if hostLinkType == "veth" {
+		if err = netlink.LinkDel(hostLink); err != nil {
+			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+		}
+	}
+	klog.Infof("rollback veth success %s", nicName)
+	return nil
 }
 
 // Setup sriov interface in the pod

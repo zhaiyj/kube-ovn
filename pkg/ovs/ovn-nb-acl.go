@@ -85,10 +85,10 @@ func (c *ovnClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, proto
 			acl.Severity = &ovnnb.ACLSeverityWarning
 		}
 
-		//if acl.Options == nil {
+		// if acl.Options == nil {
 		//	acl.Options = make(map[string]string)
-		//}
-		//acl.Options["apply-after-lb"] = "true"
+		// }
+		// acl.Options["apply-after-lb"] = "true"
 	}
 
 	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIpMatch.String(), ovnnb.ACLActionDrop, options)
@@ -102,10 +102,10 @@ func (c *ovnClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, proto
 	matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
 		allowAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
-			//if acl.Options == nil {
+			// if acl.Options == nil {
 			//	acl.Options = make(map[string]string)
-			//}
-			//acl.Options["apply-after-lb"] = "true"
+			// }
+			// acl.Options["apply-after-lb"] = "true"
 		})
 		if err != nil {
 			return nil, fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
@@ -147,12 +147,12 @@ func (c *ovnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 			return fmt.Errorf("new allow ingress acl for %s: %v", parentName, err)
 		}
 
-		//options := func(acl *ovnnb.ACL) {
+		// options := func(acl *ovnnb.ACL) {
 		//	if acl.Options == nil {
 		//		acl.Options = make(map[string]string)
 		//	}
 		//	acl.Options["apply-after-lb"] = "true"
-		//}
+		// }
 
 		allowEgressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
 		if err != nil {
@@ -196,12 +196,12 @@ func (c *ovnClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
 
-		//options := func(acl *ovnnb.ACL) {
+		// options := func(acl *ovnnb.ACL) {
 		//	if acl.Options == nil {
 		//		acl.Options = make(map[string]string)
 		//	}
 		//	acl.Options["apply-after-lb"] = "true"
-		//}
+		// }
 
 		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
 		if err != nil {
@@ -592,7 +592,7 @@ func (c *ovnClient) SetAclLog(pgName, protocol string, logEnable, isIngress bool
 	}
 
 	if acl == nil {
-		return nil //skip if acl not found
+		return nil // skip if acl not found
 	}
 
 	acl.Log = logEnable
@@ -1070,37 +1070,94 @@ func (c *ovnClient) CreateAclsOps(parentName, parentType string, acls ...*ovnnb.
 // DeleteAcls return operation which delete several acl once,
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
-func (c *ovnClient) DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+func (c *ovnClient) DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) (removeAclOp []ovsdb.Operation, err error) {
+	// 获取 ACLs
+	var acls []string
 	if externalIDs == nil {
 		externalIDs = make(map[string]string)
 	}
-
-	externalIDs[aclParentKey] = parentName
-
-	/* delete acls from port group or logical switch */
-	acls, err := c.ListAcls(direction, externalIDs)
-	if err != nil {
-		return nil, fmt.Errorf("list type %s %s acls: %v", parentType, parentName, err)
-	}
-
-	aclUUIDs := make([]string, 0, len(acls))
-	for _, acl := range acls {
-		aclUUIDs = append(aclUUIDs, acl.UUID)
-	}
-
-	// the acls column has a strong reference to the ACL table, so there is no need to delete the ACL
-	var removeAclOp []ovsdb.Operation
-	if parentType == portGroupKey { // remove acl from port group
-		removeAclOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+	switch parentType {
+	case portGroupKey: // 从 Port Group 删除 ACLs
+		portGroup, err := c.GetPortGroup(parentName, true)
 		if err != nil {
-			return nil, fmt.Errorf("generate operations for deleting acls from port group %s: %v", parentName, err)
+			return nil, fmt.Errorf("get port group failed for deleting acls %s: %v", parentName, err)
 		}
-	} else { // remove acl from logical switch
-		removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		acls = portGroup.ACLs
+	case logicalSwitchKey: // 从 Logical Switch 删除 ACLs
+		lgs, err := c.GetLogicalSwitch(parentName, true)
 		if err != nil {
-			return nil, fmt.Errorf("generate operations for deleting acls from logical switch %s: %v", parentName, err)
+			return nil, fmt.Errorf("get logical switch failed for deleting acls %s: %v", parentName, err)
+		}
+		acls = lgs.ACLs
+	default:
+		return nil, fmt.Errorf("unsupported parent type: %s", parentType)
+	}
+
+	// 根据传入条件进行筛选
+	aclUUIDs, err := c.filterAclUUIDs(acls, externalIDs, direction)
+	if err != nil {
+		return nil, err
+	}
+
+	// 筛选后如果存在 ACLs，则生成删除 ACLs 的操作
+	if len(aclUUIDs) > 0 {
+		switch parentType {
+		case portGroupKey:
+			removeAclOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		case logicalSwitchKey:
+			removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for deleting acls from %s %s: %v", parentType, parentName, err)
 		}
 	}
 
 	return removeAclOp, nil
+
+}
+
+func (c *ovnClient) filterAclUUIDs(acls []string, externalIDs map[string]string, direction string) ([]string, error) {
+	aclMaps := make(map[string]string)
+	for _, acl := range acls {
+		aclMaps[acl] = acl
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	aclList := make([]ovnnb.ACL, 0)
+	if err := c.ovnNbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+		_, isExist := aclMaps[acl.UUID]
+		if !isExist {
+			return false
+		}
+		if len(acl.ExternalIDs) < len(externalIDs) {
+			return false
+		}
+
+		if len(acl.ExternalIDs) != 0 {
+			for k, v := range externalIDs {
+				// if only key exist but not value in externalIDs, we should include this lsp,
+				// it's equal to shell command `ovn-nbctl --columns=xx find acl external_ids:key!=\"\"`
+				if len(v) == 0 {
+					if len(acl.ExternalIDs[k]) == 0 {
+						return false
+					}
+				} else {
+					if acl.ExternalIDs[k] != v {
+						return false
+					}
+				}
+			}
+		}
+		if len(direction) != 0 && acl.Direction != direction {
+			return false
+		}
+		return true
+	}).List(ctx, &aclList); err != nil {
+		return nil, fmt.Errorf("get acl with 'externalIds %v direction %s match': %v", externalIDs, direction, err)
+	}
+	var aclUUIDs []string
+	for _, acl := range aclList {
+		aclUUIDs = append(aclUUIDs, acl.UUID)
+	}
+	return aclUUIDs, nil
 }

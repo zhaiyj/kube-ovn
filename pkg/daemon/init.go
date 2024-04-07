@@ -41,11 +41,13 @@ func InitOVSBridges() (map[string]string, error) {
 			for _, port := range strings.Split(output, "\n") {
 				ok, err := ovs.ValidatePortVendor(port)
 				if err != nil {
-					return nil, fmt.Errorf("failed to check vendor of port %s: %v", port, err)
+					klog.Errorf("failed to check vendor of port %s: %v", port, err)
+					continue
 				}
 				if ok {
 					if _, err = configProviderNic(port, brName); err != nil {
-						return nil, err
+						klog.Errorf("failed to config provider nic %s: %v", port, err)
+						continue
 					}
 					mappings[port] = brName
 				}

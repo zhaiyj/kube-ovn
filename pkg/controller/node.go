@@ -256,7 +256,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 	for _, pn := range providerNetworks {
-		if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+		if util.IsProviderMatchNode(pn, node.Name) {
 			status := pn.Status.DeepCopy()
 			if status.EnsureNodeStandardConditions(key) {
 				bytes, err := status.Bytes()

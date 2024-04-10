@@ -267,7 +267,7 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
-	if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+	if !util.IsProviderMatchNode(pn, node.Name) {
 		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}

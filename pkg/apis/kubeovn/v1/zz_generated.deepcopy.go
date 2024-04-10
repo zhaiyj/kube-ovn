@@ -387,6 +387,11 @@ func (in *ProviderNetworkSpec) DeepCopyInto(out *ProviderNetworkSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.IncludeNodes != nil {
+		in, out := &in.IncludeNodes, &out.IncludeNodes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

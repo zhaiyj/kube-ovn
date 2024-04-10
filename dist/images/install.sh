@@ -744,6 +744,10 @@ spec:
                   type: array
                   items:
                     type: string
+                includeNodes:
+                  type: array
+                  items:
+                    type: string
               required:
                 - defaultInterface
             status:

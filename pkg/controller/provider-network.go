@@ -44,7 +44,7 @@ func (c *Controller) resyncProviderNetworkStatus() {
 
 		var conditionsUpdated bool
 		for _, node := range nodes {
-			if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+			if !util.IsProviderMatchNode(pn, node.Name) {
 				if pn.Status.RemoveNodeConditions(node.Name) {
 					conditionsUpdated = true
 				}
